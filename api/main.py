@@ -23,7 +23,7 @@ import json
 from collections import defaultdict
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import and_
+from sqlalchemy import and_, text
 from datetime import date
 
 # Handle both package and direct imports for maximum compatibility
@@ -388,6 +388,70 @@ async def system_info():
             "debug": settings.DEBUG
         }
     }
+
+@app.get("/debug-batch-model")
+async def debug_batch_model():
+    """Debug what columns the Batch model thinks it has"""
+    try:
+        from .models import Batch
+        
+        columns = []
+        for col in Batch.__table__.columns:
+            columns.append({
+                "name": col.name,
+                "type": str(col.type),
+                "key": col.key,
+                "python_attr": col.key
+            })
+        
+        # Check for specific attributes
+        has_mfg_date = hasattr(Batch, 'mfg_date')
+        has_manufacturing_date = hasattr(Batch, 'manufacturing_date')
+        
+        return {
+            "table_name": Batch.__tablename__,
+            "columns": columns,
+            "has_mfg_date_attr": has_mfg_date,
+            "has_manufacturing_date_attr": has_manufacturing_date,
+            "python_attrs": [attr for attr in dir(Batch) if not attr.startswith('_') and not callable(getattr(Batch, attr))]
+        }
+    except Exception as e:
+        return {"error": str(e), "traceback": str(e)}
+
+@app.post("/fix-batch-schema")
+async def fix_batch_schema(db: Session = Depends(get_db)):
+    """Fix the batch schema by renaming mfg_date to manufacturing_date"""
+    try:
+        # Check if mfg_date column exists
+        result = db.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'batches' 
+            AND column_name = 'mfg_date'
+        """))
+        
+        if result.fetchone():
+            # Rename the column
+            db.execute(text("ALTER TABLE batches RENAME COLUMN mfg_date TO manufacturing_date"))
+            db.commit()
+            return {"status": "success", "message": "Column renamed from mfg_date to manufacturing_date"}
+        else:
+            # Check if manufacturing_date already exists
+            result = db.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'batches' 
+                AND column_name = 'manufacturing_date'
+            """))
+            
+            if result.fetchone():
+                return {"status": "info", "message": "manufacturing_date column already exists"}
+            else:
+                return {"status": "error", "message": "Neither mfg_date nor manufacturing_date found"}
+                
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Schema fix failed: {str(e)}")
 
 # All API routes are now handled by modular routers
 # See /routers/ directory for endpoint implementations
