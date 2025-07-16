@@ -52,9 +52,9 @@ class Settings(BaseSettings):
         "https://app.supabase.io"  # Supabase dashboard
     ]
     
-    # Database Connection Pool (PostgreSQL optimized)
-    DB_POOL_SIZE: int = 10 if os.getenv("DATABASE_URL", "").startswith("postgresql") else 5
-    DB_MAX_OVERFLOW: int = 20 if os.getenv("DATABASE_URL", "").startswith("postgresql") else 0
+    # Database Connection Pool (Memory optimized for Render)
+    DB_POOL_SIZE: int = 2 if os.getenv("DATABASE_URL", "").startswith("postgresql") else 2
+    DB_MAX_OVERFLOW: int = 5 if os.getenv("DATABASE_URL", "").startswith("postgresql") else 0
     DB_POOL_RECYCLE: int = 3600  # 1 hour for PostgreSQL
     DB_POOL_PRE_PING: bool = True  # Enable connection health checks
     
