@@ -477,6 +477,47 @@ async def check_batch_columns(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Schema check failed: {str(e)}")
 
+@app.get("/inspect-schema")
+async def inspect_schema(db: Session = Depends(get_db)):
+    """Inspect all tables and columns in the database"""
+    try:
+        # Get all tables
+        tables_result = db.execute(text("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_type = 'BASE TABLE'
+            ORDER BY table_name
+        """))
+        
+        schema_info = {}
+        
+        for table_row in tables_result:
+            table_name = table_row[0]
+            
+            # Get columns for this table
+            columns_result = db.execute(text("""
+                SELECT column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns 
+                WHERE table_name = :table_name 
+                AND table_schema = 'public'
+                ORDER BY ordinal_position
+            """), {"table_name": table_name})
+            
+            schema_info[table_name] = []
+            for col in columns_result:
+                schema_info[table_name].append({
+                    "name": col[0],
+                    "type": col[1],
+                    "nullable": col[2] == 'YES',
+                    "default": col[3]
+                })
+        
+        return {"database_schema": schema_info}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Schema inspection failed: {str(e)}")
+
 # All API routes are now handled by modular routers
 # See /routers/ directory for endpoint implementations
 
