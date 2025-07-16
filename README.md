@@ -1,6 +1,6 @@
 # 🏥 Pharmaceutical Management System - Backend
 
-**Version:** 2.0.0  
+**Version:** 2.0.1  
 **Status:** Production Ready - Fixed and Optimized  
 **Architecture:** Modular FastAPI with Enterprise Features  
 **Database:** PostgreSQL (Supabase) with RLS
