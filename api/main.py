@@ -124,7 +124,11 @@ app = FastAPI(
 # Security middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"] if settings.DEBUG else ["localhost", "127.0.0.1"]
+    allowed_hosts=["*"] if settings.DEBUG else [
+        "localhost", "127.0.0.1", 
+        "*.railway.app", "*.up.railway.app",
+        "pharma-backend-production-0c09.up.railway.app"
+    ]
 )
 
 # CORS middleware
