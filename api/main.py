@@ -1,0 +1,338 @@
+"""
+AASO Pharma ERP - Production-Ready FastAPI Application
+World-class pharmaceutical management system with comprehensive features
+"""
+
+import logging
+import time
+from contextlib import asynccontextmanager
+from typing import List
+# import sentry_sdk
+# from sentry_sdk.integrations.fastapi import FastApiIntegration
+# from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+from fastapi import FastAPI, Depends, HTTPException, Form, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.security import HTTPBearer
+# import redis
+import json
+from collections import defaultdict
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import and_
+from datetime import date
+
+# Handle both package and direct imports for maximum compatibility
+# FIXED: Import issues when running as module vs direct execution
+# This allows the app to work with both 'python -m api.main' and 'uvicorn api.main:app'
+try:
+    from . import models, schemas, crud
+    from .database import SessionLocal, engine, get_db, init_database, check_database_connection
+    from .core.config import settings
+    # Import all routers for modularization
+    from .routers import (
+        analytics, batches, compliance, customers, file_uploads,
+        inventory, loyalty, orders, payments, products, purchases,
+        sales_returns, simple_delivery, tax_entries, users
+    )
+    # Temporarily disabled due to schema/model issues: challans, stock_adjustments
+except ImportError:
+    import models
+    import schemas
+    import crud
+    from database import SessionLocal, engine, get_db, init_database, check_database_connection
+    from core.config import settings
+    # Import all routers for modularization
+    from routers import (
+        analytics, batches, compliance, customers, file_uploads,
+        inventory, loyalty, orders, payments, products, purchases,
+        sales_returns, simple_delivery, tax_entries, users
+    )
+    # Temporarily disabled due to schema/model issues: challans, stock_adjustments
+
+# Configure Sentry for error tracking
+# if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
+#     sentry_sdk.init(
+#         dsn=settings.SENTRY_DSN,
+#         integrations=[
+#             FastApiIntegration(auto_enabling_integrations=False),
+#             SqlalchemyIntegration(),
+#         ],
+#         traces_sample_rate=0.1,  # 10% of transactions for performance monitoring
+#         environment=settings.ENVIRONMENT,
+#         release=settings.APP_VERSION,
+#     )
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Application lifespan management
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup and shutdown events"""
+    # Startup
+    logger.info("🚀 Starting AASO Pharma ERP...")
+    
+    # Initialize database
+    init_database()
+    
+    # Check database connection
+    if check_database_connection():
+        logger.info("✅ Database connection established")
+    else:
+        logger.error("❌ Database connection failed")
+        raise RuntimeError("Database connection failed")
+    
+    logger.info("🏥 AASO Pharma ERP is ready!")
+    yield
+    
+    # Shutdown
+    logger.info("🔄 Shutting down AASO Pharma ERP...")
+
+# Create FastAPI application
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    description="""
+    World-class pharmaceutical management system with comprehensive ERP features.
+    
+    ## Features
+    - 🏥 Complete pharmaceutical inventory management
+    - 📋 Regulatory compliance (CDSCO, State Drug Controller)
+    - 💊 Drug schedule management (G, H, H1, X)
+    - 🎯 Batch tracking with expiry management
+    - 💰 Advanced payment processing with UPI
+    - 🏆 Customer loyalty programs
+    - 📊 Comprehensive analytics and reporting
+    - 🚚 Challan and delivery tracking
+    - 📁 Document management system
+    """,
+    docs_url="/docs" if settings.ENABLE_DOCS else None,
+    redoc_url="/redoc" if settings.ENABLE_DOCS else None,
+    lifespan=lifespan
+)
+
+# Security middleware
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["*"] if settings.DEBUG else ["localhost", "127.0.0.1"]
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Security middleware
+security = HTTPBearer()
+
+# Rate limiting storage (in-memory for development, use Redis in production)
+rate_limit_storage = defaultdict(list)
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to all responses"""
+    response = await call_next(request)
+    
+    # Security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    
+    return response
+
+@app.middleware("http")
+async def rate_limiting_middleware(request: Request, call_next):
+    """Basic rate limiting middleware"""
+    client_ip = request.client.host
+    current_time = time.time()
+    
+    # Clean old entries (older than 1 minute)
+    rate_limit_storage[client_ip] = [
+        timestamp for timestamp in rate_limit_storage[client_ip]
+        if current_time - timestamp < 60
+    ]
+    
+    # Check if client has exceeded rate limit (100 requests per minute)
+    if len(rate_limit_storage[client_ip]) >= 100:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Please try again later."}
+        )
+    
+    # Add current request timestamp
+    rate_limit_storage[client_ip].append(current_time)
+    
+    response = await call_next(request)
+    return response
+
+# Include all routers for modular architecture
+app.include_router(analytics.router)
+app.include_router(batches.router) 
+# app.include_router(challans.router)  # Temporarily disabled due to schema issues
+app.include_router(compliance.router)
+app.include_router(customers.router)
+app.include_router(file_uploads.router)
+app.include_router(inventory.router)
+app.include_router(loyalty.router)
+app.include_router(orders.router)
+app.include_router(payments.router)
+app.include_router(products.router)
+app.include_router(purchases.router)
+app.include_router(sales_returns.router)
+app.include_router(simple_delivery.router)
+# app.include_router(stock_adjustments.router)  # Temporarily disabled - model missing
+app.include_router(tax_entries.router)
+app.include_router(users.router)
+
+# Request timing middleware
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+
+# Audit logging middleware 
+@app.middleware("http") 
+async def audit_middleware(request: Request, call_next):
+    """Audit logging middleware"""
+    try:
+        from .core.audit import AuditLogger
+    except ImportError:
+        from core.audit import AuditLogger
+    
+    start_time = time.time()
+    
+    try:
+        response = await call_next(request)
+        execution_time = time.time() - start_time
+        
+        # Log API access
+        AuditLogger.log_api_access(
+            request=request,
+            response_status=response.status_code,
+            execution_time=execution_time
+        )
+        
+        return response
+        
+    except Exception as e:
+        execution_time = time.time() - start_time
+        
+        # Log failed requests
+        AuditLogger.log_api_access(
+            request=request,
+            response_status=500,
+            execution_time=execution_time
+        )
+        
+        # Log security events for suspicious patterns
+        if any(pattern in str(request.url).lower() for pattern in ['admin', 'config', '.env', 'password']):
+            AuditLogger.log_security_event(
+                event="suspicious_request",
+                description=f"Suspicious request pattern: {request.url}",
+                ip_address=request.client.host,
+                severity="high"
+            )
+        
+        raise
+
+# Global exception handlers
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": exc.errors(), "body": exc.body}
+    )
+
+@app.exception_handler(SQLAlchemyError)
+async def database_exception_handler(request: Request, exc: SQLAlchemyError):
+    logger.error(f"Database error: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Database operation failed"}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unexpected error: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error"}
+    )
+
+# Root endpoint
+@app.get("/")
+async def read_root():
+    """Root endpoint with system information"""
+    return {
+        "message": "🏥 AASO Pharma ERP - World-class pharmaceutical management system",
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+        "status": "✅ System operational",
+        "features": [
+            "Pharmaceutical inventory management",
+            "Regulatory compliance",
+            "Drug schedule management",
+            "Batch tracking",
+            "Payment processing",
+            "Loyalty programs",
+            "Analytics and reporting"
+        ]
+    }
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    db_status = check_database_connection()
+    return {
+        "status": "healthy" if db_status else "unhealthy",
+        "database": "✅ Connected" if db_status else "❌ Disconnected",
+        "timestamp": time.time()
+    }
+
+# System information endpoint
+@app.get("/info")
+async def system_info():
+    """System information endpoint"""
+    return {
+        "app_name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+        "database_type": "PostgreSQL (Supabase)" if settings.is_supabase else "SQLite",
+        "features_enabled": {
+            "docs": settings.ENABLE_DOCS,
+            "metrics": settings.ENABLE_METRICS,
+            "debug": settings.DEBUG
+        }
+    }
+
+# All API routes are now handled by modular routers
+# See /routers/ directory for endpoint implementations
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=settings.DEBUG,
+        log_level=settings.LOG_LEVEL.lower()
+    )

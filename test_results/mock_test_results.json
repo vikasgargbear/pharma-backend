@@ -1,0 +1,59 @@
+{
+  "timestamp": "2025-07-15T21:06:55.990249",
+  "environment": "mock",
+  "total_tests": 125,
+  "total_passed": 119,
+  "total_failed": 6,
+  "pass_rate": 95.19999999999999,
+  "duration": 1.4765074253082275,
+  "categories": [
+    {
+      "category": "Authentication",
+      "total": 15,
+      "passed": 14,
+      "failed": 1,
+      "skipped": 0,
+      "duration": 0.17818212509155273
+    },
+    {
+      "category": "Core Business",
+      "total": 25,
+      "passed": 23,
+      "failed": 2,
+      "skipped": 0,
+      "duration": 0.29897308349609375
+    },
+    {
+      "category": "Financial",
+      "total": 20,
+      "passed": 19,
+      "failed": 1,
+      "skipped": 0,
+      "duration": 0.23720145225524902
+    },
+    {
+      "category": "Integration",
+      "total": 20,
+      "passed": 19,
+      "failed": 1,
+      "skipped": 0,
+      "duration": 0.23567771911621094
+    },
+    {
+      "category": "Security",
+      "total": 30,
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0,
+      "duration": 0.35021066665649414
+    },
+    {
+      "category": "Performance",
+      "total": 15,
+      "passed": 14,
+      "failed": 1,
+      "skipped": 0,
+      "duration": 0.17626237869262695
+    }
+  ]
+}

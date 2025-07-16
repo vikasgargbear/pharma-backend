@@ -1,0 +1,47 @@
+version: '3.9'
+
+# Simplified Docker Compose for startup - uses Supabase for DB
+# Only includes essential services to minimize costs
+
+services:
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pharma-backend
+    environment:
+      # Use Supabase PostgreSQL (already configured in .env)
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-jwt-secret-key}
+      DEBUG: ${DEBUG:-false}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      # Optional services - comment out if not using
+      # REDIS_URL: redis://redis:6379/0
+      # SENTRY_DSN: ${SENTRY_DSN:-}
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    ports:
+      - "8000:8000"
+    networks:
+      - pharma-network
+    restart: unless-stopped
+
+  # Optional: Local Redis for caching (comment out to save resources)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: pharma-redis
+  #   command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - pharma-network
+  #   restart: unless-stopped
+
+networks:
+  pharma-network:
+    driver: bridge

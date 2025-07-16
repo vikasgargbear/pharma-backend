@@ -1,0 +1,111 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+log/
+audit.log
+
+# Test Coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Server logs
+server.log
+nohup.out
+
+# Test outputs
+test-results/
+test_output/
+
+# Interim documentation files (cleanup)
+SCHEMA_CRUD_FIXES.md
+BACKEND_READY_STATUS.md
+test_api_quick.py
+
+# Uploads directory
+uploads/
+
+# Node modules (if any frontend tooling)
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+
+# Generated documentation
+docs/_build/
+site/

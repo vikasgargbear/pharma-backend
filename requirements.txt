@@ -1,0 +1,42 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+pydantic==2.5.0
+pydantic-settings==2.0.3
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+alembic==1.13.1
+
+# New dependencies for today's features
+# Enhanced Bill parser
+pdfminer.six==20221105
+camelot-py[cv]==0.11.0
+rapidfuzz==3.6.2
+pdf2image==1.17.0
+pytesseract==0.3.10
+pdfplumber==0.9.0
+PyMuPDF==1.23.14
+tabula-py==2.8.2
+qrcode[pil]==7.4.2  # For UPI QR code generation
+pillow==10.1.0      # Image processing for QR codes
+uuid                # UUID generation (built-in)
+aiofiles==23.2.0    # Async file operations
+
+# Optional but recommended
+redis==5.0.1        # For caching (future implementation)
+celery==5.3.4       # For background tasks (future implementation)
+
+# Testing dependencies
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.2
+
+# Development & Security
+sentry-sdk[fastapi]==1.40.6  # Error tracking
+email-validator==2.1.0       # Email validation  
+python-dotenv==1.0.0         # Environment variables
+bleach==6.1.0                # HTML sanitization
+phonenumbers==8.13.25        # Phone number validation
