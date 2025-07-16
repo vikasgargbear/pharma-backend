@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
 import hashlib
-import jwt
+from jose import jwt
 from passlib.context import CryptContext
 
 from ..database import get_db
