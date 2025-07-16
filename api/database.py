@@ -14,7 +14,7 @@ except ImportError:
     from core.config import settings
 
 # Get database URL from settings (supports both SQLite and PostgreSQL/Supabase)
-SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
+SQLALCHEMY_DATABASE_URL = settings.database_url
 
 # Create the engine with optimized settings
 if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
