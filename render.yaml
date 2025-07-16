@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: pharma-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python start_production.py
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://postgres:I5ejcC77brqe4EPY@db.xfytbzavuvpbmxkhqvkb.supabase.co:5432/postgres?sslmode=require
+      - key: SECRET_KEY
+        value: a14GDevBeTL3k3cSooDpzuuPkC+IV0AMWkcHAtyg0KG10hcPzdv5Tfb86kubtgI+bxAqaNK0gPDD3nYIM2HPTg==
+      - key: DEBUG
+        value: false
