@@ -223,9 +223,12 @@ def get_db():
         yield session
     except SQLAlchemyError as e:
         logger.error(f"Database session error: {e}")
-        # Return None to indicate DB is unavailable
-        # Individual endpoints can handle this gracefully
-        yield None
+        # Raise HTTP exception for proper error handling
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database service temporarily unavailable: {str(e)}"
+        )
     finally:
         if 'session' in locals():
             session.close()
