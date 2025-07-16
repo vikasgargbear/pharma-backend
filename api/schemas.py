@@ -54,7 +54,7 @@ class Product(ProductBase):
 class BatchBase(BaseModel):
     product_id: int
     batch_number: str
-    manufacturing_date: Optional[date]  # Fixed: was mfg_date
+    mfg_date: Optional[date]  # Match database column name
     expiry_date: date
     purchase_price: Optional[float] = None
     selling_price: Optional[float] = None
