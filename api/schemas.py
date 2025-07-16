@@ -56,39 +56,10 @@ class BatchBase(BaseModel):
     batch_number: str
     manufacturing_date: Optional[date]  # Fixed: was mfg_date
     expiry_date: date
-    # Updated to match actual database schema
-    org_id: Optional[str] = None
-    lot_number: Optional[str] = None
-    serial_number: Optional[str] = None
-    days_to_expiry: Optional[int] = None
-    is_near_expiry: Optional[bool] = False
-    quantity_received: int
-    quantity_available: int
-    quantity_sold: Optional[int] = 0
-    quantity_damaged: Optional[int] = 0
-    quantity_returned: Optional[int] = 0
-    received_uom: Optional[str] = None
-    base_quantity: Optional[int] = None
-    cost_price: Optional[float] = None
+    purchase_price: Optional[float] = None
     selling_price: Optional[float] = None
-    mrp: Optional[float] = None
-    supplier_id: Optional[int] = None
-    purchase_id: Optional[int] = None
-    purchase_invoice_number: Optional[str] = None
-    branch_id: Optional[int] = None
-    location_code: Optional[str] = None
-    rack_number: Optional[str] = None
-    batch_status: Optional[str] = "active"
-    is_blocked: Optional[bool] = False
-    block_reason: Optional[str] = None
-    current_stock_status: Optional[str] = None
-    notes: Optional[str] = None
-    created_by: Optional[int] = None
-    is_free_sample: Optional[bool] = False
-    is_physician_sample: Optional[bool] = False
-    temperature_log: Optional[str] = None
-    qa_status: Optional[str] = "pending"
-    qa_certificate_url: Optional[str] = None
+    quantity_available: int
+    location: Optional[str] = None
 
 class BatchCreate(BatchBase):
     pass

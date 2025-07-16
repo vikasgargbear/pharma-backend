@@ -264,24 +264,29 @@ class Product(Base):
 class Batch(Base):
     __tablename__ = "batches"
     batch_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)  # Added from actual schema
     product_id = Column(Integer, ForeignKey("products.product_id", ondelete="CASCADE"), nullable=False)
     batch_number = Column(Text, nullable=False)
-    lot_number = Column(Text)
-    serial_number = Column(Text)
     manufacturing_date = Column(Date)  # Fixed: was mfg_date
     expiry_date = Column(Date, nullable=False)
+    purchase_price = Column(Numeric(10, 2))  # Keep for backward compatibility
+    selling_price = Column(Numeric(10, 2))
+    quantity_available = Column(Integer, nullable=False)
+    location = Column(Text)  # Keep for backward compatibility
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Full database schema columns (optional for now)
+    org_id = Column(String)
+    lot_number = Column(Text)
+    serial_number = Column(Text)
     days_to_expiry = Column(Integer)
     is_near_expiry = Column(Boolean, default=False)
-    quantity_received = Column(Integer, nullable=False)
-    quantity_available = Column(Integer, nullable=False)
+    quantity_received = Column(Integer)
     quantity_sold = Column(Integer, default=0)
     quantity_damaged = Column(Integer, default=0)
     quantity_returned = Column(Integer, default=0)
     received_uom = Column(Text)
     base_quantity = Column(Integer)
     cost_price = Column(Numeric(10, 2))
-    selling_price = Column(Numeric(10, 2))
     mrp = Column(Numeric(10, 2))
     supplier_id = Column(Integer)
     purchase_id = Column(Integer)
@@ -295,11 +300,10 @@ class Batch(Base):
     current_stock_status = Column(Text)
     notes = Column(Text)
     created_by = Column(Integer)
-    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     is_free_sample = Column(Boolean, default=False)
     is_physician_sample = Column(Boolean, default=False)
-    temperature_log = Column(Text)  # Using Text instead of jsonb for SQLAlchemy compatibility
+    temperature_log = Column(Text)
     qa_status = Column(Text, default='pending')
     qa_certificate_url = Column(Text)
 
