@@ -21,7 +21,7 @@ PyMuPDF==1.23.14
 tabula-py==2.8.2
 qrcode[pil]==7.4.2  # For UPI QR code generation
 pillow==10.1.0      # Image processing for QR codes
-uuid                # UUID generation (built-in)
+# uuid is built-in, not needed in requirements
 aiofiles==23.2.0    # Async file operations
 
 # Optional but recommended
