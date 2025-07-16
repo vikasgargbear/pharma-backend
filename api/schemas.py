@@ -4,6 +4,7 @@ from datetime import datetime, date
 
 # ---------------- Products ----------------
 class ProductBase(BaseModel):
+    product_code: Optional[str] = Field(None, example="PARA500")
     product_name: str = Field(..., example="aasoli")
     category: Optional[str] = Field(None, example="medication")
     manufacturer: Optional[str] = Field(None, example="aaso")
@@ -108,12 +109,30 @@ class OrderBase(BaseModel):
     customer_id: int
     mr_id: Optional[int] = None  # Medical Representative
     order_date: Optional[datetime]
+    
+    # Invoice details
+    invoice_no: Optional[str] = None
+    invoice_date: Optional[date] = None
+    due_date: Optional[date] = None
+    
+    # Financial calculations
     gross_amount: float
     discount: float
     tax_amount: float
     final_amount: float
+    round_off: Optional[float] = Field(0.0, example=0.0)
+    
+    # Transport and logistics
+    transport_charges: Optional[float] = Field(0.0, example=0.0)
+    transport_mode: Optional[str] = None
+    
+    # Payment details
     payment_status: Optional[str] = Field("pending")
+    payment_mode: Optional[str] = Field("CASH")
+    
+    # Status and metadata
     status: Optional[str] = Field("placed")
+    notes: Optional[str] = None
 
 class OrderCreate(OrderBase):
     pass

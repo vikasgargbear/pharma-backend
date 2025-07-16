@@ -222,6 +222,7 @@ class UPIPayment(Base):
 class Product(Base):
     __tablename__ = "products"
     product_id = Column(Integer, primary_key=True, autoincrement=True)
+    product_code = Column(Text, unique=True)  # Frontend uses this field
     product_name = Column(Text, nullable=False)
     category = Column(Text)
     manufacturer = Column(Text)
@@ -246,7 +247,7 @@ class Product(Base):
     storage_instructions = Column(Text)  # How to store the product
     packer = Column(Text)  # Packing company
     country_of_origin = Column(Text)  # Manufacturing country
-    model_number = Column(Text)  # Item model number
+# Removed model_number - causes Pydantic warning, replaced with product_code
     dimensions = Column(Text)  # Product dimensions
     weight = Column(Numeric(10, 2))  # Weight in grams
     weight_unit = Column(String(10), default='g')  # Unit of weight
@@ -263,15 +264,44 @@ class Product(Base):
 class Batch(Base):
     __tablename__ = "batches"
     batch_id = Column(Integer, primary_key=True, autoincrement=True)
+    org_id = Column(String, nullable=False)  # Added from actual schema
     product_id = Column(Integer, ForeignKey("products.product_id", ondelete="CASCADE"), nullable=False)
     batch_number = Column(Text, nullable=False)
-    mfg_date = Column(Date)
+    lot_number = Column(Text)
+    serial_number = Column(Text)
+    manufacturing_date = Column(Date)  # Fixed: was mfg_date
     expiry_date = Column(Date, nullable=False)
-    purchase_price = Column(Numeric(10, 2), nullable=False)
-    selling_price = Column(Numeric(10, 2))
+    days_to_expiry = Column(Integer)
+    is_near_expiry = Column(Boolean, default=False)
+    quantity_received = Column(Integer, nullable=False)
     quantity_available = Column(Integer, nullable=False)
-    location = Column(Text)
+    quantity_sold = Column(Integer, default=0)
+    quantity_damaged = Column(Integer, default=0)
+    quantity_returned = Column(Integer, default=0)
+    received_uom = Column(Text)
+    base_quantity = Column(Integer)
+    cost_price = Column(Numeric(10, 2))
+    selling_price = Column(Numeric(10, 2))
+    mrp = Column(Numeric(10, 2))
+    supplier_id = Column(Integer)
+    purchase_id = Column(Integer)
+    purchase_invoice_number = Column(Text)
+    branch_id = Column(Integer)
+    location_code = Column(Text)
+    rack_number = Column(Text)
+    batch_status = Column(Text, default='active')
+    is_blocked = Column(Boolean, default=False)
+    block_reason = Column(Text)
+    current_stock_status = Column(Text)
+    notes = Column(Text)
+    created_by = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    is_free_sample = Column(Boolean, default=False)
+    is_physician_sample = Column(Boolean, default=False)
+    temperature_log = Column(Text)  # Using Text instead of jsonb for SQLAlchemy compatibility
+    qa_status = Column(Text, default='pending')
+    qa_certificate_url = Column(Text)
 
 # ----------------- CUSTOMERS -----------------
 class Customer(Base):
@@ -527,12 +557,34 @@ class Order(Base):
     customer_id = Column(Integer, ForeignKey("customers.customer_id"))
     mr_id = Column(Integer, ForeignKey("medical_representatives.mr_id"))  # Link to MR
     order_date = Column(DateTime, default=datetime.utcnow)
+    
+    # Invoice details
+    invoice_no = Column(Text, unique=True)  # Frontend uses this
+    invoice_date = Column(Date, default=datetime.utcnow)  # Frontend uses this
+    due_date = Column(Date)  # Frontend uses this
+    
+    # Financial calculations
     gross_amount = Column(Numeric(10, 2))
     discount = Column(Numeric(10, 2))
     tax_amount = Column(Numeric(10, 2))
     final_amount = Column(Numeric(10, 2))
+    round_off = Column(Numeric(10, 2), default=0)  # Frontend uses this
+    
+    # Transport and logistics
+    transport_charges = Column(Numeric(10, 2), default=0)  # Frontend uses this
+    transport_mode = Column(Text)  # Frontend uses this
+    
+    # Payment details
     payment_status = Column(Text, default='pending')
+    payment_mode = Column(Text, default='CASH')  # Frontend uses this
+    
+    # Status and metadata
     status = Column(Text, default='placed')
+    notes = Column(Text)  # Frontend uses this
+    
+    # Audit fields
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 # ----------------- ORDER ITEMS -----------------
 class OrderItem(Base):
