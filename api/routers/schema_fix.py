@@ -9,6 +9,35 @@ from ..database import get_db
 
 router = APIRouter(prefix="/schema-fix", tags=["schema-fix"])
 
+@router.get("/debug-model")
+def debug_batch_model():
+    """Debug what columns the Batch model thinks it has"""
+    try:
+        from ..models import Batch
+        
+        columns = []
+        for col in Batch.__table__.columns:
+            columns.append({
+                "name": col.name,
+                "type": str(col.type),
+                "key": col.key,
+                "python_attr": col.key
+            })
+        
+        # Check for specific attributes
+        has_mfg_date = hasattr(Batch, 'mfg_date')
+        has_manufacturing_date = hasattr(Batch, 'manufacturing_date')
+        
+        return {
+            "table_name": Batch.__tablename__,
+            "columns": columns,
+            "has_mfg_date_attr": has_mfg_date,
+            "has_manufacturing_date_attr": has_manufacturing_date,
+            "python_attrs": [attr for attr in dir(Batch) if not attr.startswith('_') and not callable(getattr(Batch, attr))]
+        }
+    except Exception as e:
+        return {"error": str(e), "traceback": str(e)}
+
 @router.post("/rename-mfg-date")
 def rename_mfg_date_column(db: Session = Depends(get_db)):
     """Rename mfg_date column to manufacturing_date in batches table"""
