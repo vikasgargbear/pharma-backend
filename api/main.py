@@ -346,7 +346,7 @@ async def detailed_health_check():
     app_status = {
         "application": {
             "status": "healthy",
-            "version": "2.0.2"  # Schema fix version,
+            "version": "2.1.0",  # Schema inspection version
             "timestamp": datetime.utcnow()
         }
     }

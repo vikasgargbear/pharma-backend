@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     
     # Application
     APP_NAME: str = "Pharma Management System"
-    APP_VERSION: str = "2.0.0"
+    APP_VERSION: str = "2.1.0"
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
