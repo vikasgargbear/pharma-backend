@@ -31,10 +31,18 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         * `schema`: A Pydantic model (schema) class
         """
         self.model = model
+        # Find the primary key column dynamically
+        self.pk_column = None
+        for column in model.__table__.columns:
+            if column.primary_key:
+                self.pk_column = column
+                break
+        if not self.pk_column:
+            raise ValueError(f"No primary key found for model {model.__name__}")
 
     def get(self, db: Session, id: Any) -> Optional[ModelType]:
         """Get a single record by ID"""
-        return db.query(self.model).filter(self.model.id == id).first()
+        return db.query(self.model).filter(self.pk_column == id).first()
 
     def get_multi(
         self, 
@@ -117,7 +125,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
     
     def exists(self, db: Session, id: Any) -> bool:
         """Check if record exists"""
-        return db.query(self.model).filter(self.model.id == id).first() is not None
+        return db.query(self.model).filter(self.pk_column == id).first() is not None
 
 
 # Factory function to create CRUD instances

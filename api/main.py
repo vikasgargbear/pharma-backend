@@ -37,7 +37,8 @@ try:
     from .routers import (
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
-        sales_returns, simple_delivery, stock_adjustments, tax_entries, users
+        sales_returns, simple_delivery, stock_adjustments, tax_entries, users,
+        schema_fix
     )
     # Temporarily disabled due to schema/model issues: challans
 except ImportError:
@@ -50,7 +51,8 @@ except ImportError:
     from .routers import (
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
-        sales_returns, simple_delivery, stock_adjustments, tax_entries, users
+        sales_returns, simple_delivery, stock_adjustments, tax_entries, users,
+        schema_fix
     )
     # Temporarily disabled due to schema/model issues: challans
 
@@ -204,6 +206,7 @@ app.include_router(simple_delivery.router)
 app.include_router(stock_adjustments.router)  # Now enabled - model added
 app.include_router(tax_entries.router)
 app.include_router(users.router)
+app.include_router(schema_fix.router)  # Temporary schema fix router
 
 # Request timing middleware
 @app.middleware("http")

@@ -266,7 +266,7 @@ class Batch(Base):
     batch_id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(Integer, ForeignKey("products.product_id", ondelete="CASCADE"), nullable=False)
     batch_number = Column(Text, nullable=False)
-    manufacturing_date = Column(Date)  # Fixed: was mfg_date
+    manufacturing_date = Column('manufacturing_date', Date)  # Map to correct database column
     expiry_date = Column(Date, nullable=False)
     purchase_price = Column(Numeric(10, 2))  # Keep for backward compatibility
     selling_price = Column(Numeric(10, 2))
