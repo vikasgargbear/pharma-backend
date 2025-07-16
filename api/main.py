@@ -40,13 +40,13 @@ try:
     )
     # Temporarily disabled due to schema/model issues: challans, stock_adjustments
 except ImportError:
-    import models
-    import schemas
-    import crud
-    from database import SessionLocal, engine, get_db, init_database, check_database_connection
-    from core.config import settings
+    from . import models
+    from . import schemas
+    from . import crud
+    from .database import SessionLocal, engine, get_db, init_database, check_database_connection
+    from .core.config import settings
     # Import all routers for modularization
-    from routers import (
+    from .routers import (
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
         sales_returns, simple_delivery, tax_entries, users
