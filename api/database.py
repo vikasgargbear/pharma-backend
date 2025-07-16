@@ -41,28 +41,24 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Base class for models
 Base = declarative_base()
 
-# Dependency to get DB session
-def get_db():
-    """Database session dependency for FastAPI"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Use the new world-class database manager
+from .core.database_manager import get_database_manager, get_db
 
-# Database health check
+def get_db_session():
+    """Legacy function for backward compatibility"""
+    db_manager = get_database_manager()
+    return db_manager.get_session()
+
 def check_database_connection():
     """Check if database connection is working"""
-    try:
-        from sqlalchemy import text
-        db = SessionLocal()
-        # Try to execute a simple query
-        db.execute(text("SELECT 1"))
-        db.close()
-        return True
-    except Exception as e:
-        print(f"Database connection failed: {e}")
-        return False
+    db_manager = get_database_manager()
+    return db_manager.test_connection()
+
+# Backward compatibility
+def get_db():
+    """Database session dependency for FastAPI"""
+    from .core.database_manager import get_db
+    return get_db()
 
 # Database initialization
 def init_database():

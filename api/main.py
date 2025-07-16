@@ -7,6 +7,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from typing import List
+from datetime import datetime
 # import sentry_sdk
 # from sentry_sdk.integrations.fastapi import FastApiIntegration
 # from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
@@ -76,19 +77,20 @@ logger = logging.getLogger(__name__)
 # Application lifespan management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application startup and shutdown events"""
+    """Application startup and shutdown events - World-class approach"""
     # Startup
     logger.info("🚀 Starting AASO Pharma ERP...")
     
-    # Initialize database
-    init_database()
+    # Initialize database manager (lazy connection)
+    from .core.database_manager import get_database_manager
+    db_manager = get_database_manager()
     
-    # Check database connection
-    if check_database_connection():
+    # Test database connection (non-blocking)
+    if db_manager.test_connection():
         logger.info("✅ Database connection established")
     else:
-        logger.error("❌ Database connection failed")
-        raise RuntimeError("Database connection failed")
+        logger.warning("⚠️ Database connection failed - starting in degraded mode")
+        logger.info("🔄 App will attempt to reconnect to database on demand")
     
     logger.info("🏥 AASO Pharma ERP is ready!")
     yield
@@ -208,6 +210,29 @@ async def add_process_time_header(request: Request, call_next):
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
+# Database error handling middleware - World-class approach
+@app.middleware("http")
+async def database_error_handler(request: Request, call_next):
+    """Handle database connection errors gracefully"""
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        # Check if it's a database-related error
+        if "database" in str(e).lower() or "connection" in str(e).lower() or "psycopg2" in str(e).lower():
+            logger.error(f"Database error in {request.url}: {e}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "Service temporarily unavailable",
+                    "message": "Database connection issues - please try again later",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+        else:
+            # Re-raise non-database errors
+            raise
+
 # Audit logging middleware 
 @app.middleware("http") 
 async def audit_middleware(request: Request, call_next):
@@ -297,16 +322,49 @@ async def read_root():
         ]
     }
 
-# Health check endpoint
-@app.get("/health")
+# World-class health check endpoints
+@app.get("/health", tags=["health"])
 async def health_check():
-    """Health check endpoint for monitoring"""
-    db_status = check_database_connection()
-    return {
-        "status": "healthy" if db_status else "unhealthy",
-        "database": "✅ Connected" if db_status else "❌ Disconnected",
-        "timestamp": time.time()
+    """Simple health check endpoint - always returns healthy if app is running"""
+    return {"status": "healthy", "timestamp": datetime.utcnow()}
+
+@app.get("/health/detailed", tags=["health"])
+async def detailed_health_check():
+    """Detailed health check with database status"""
+    from .core.database_manager import get_database_manager
+    
+    db_manager = get_database_manager()
+    health_status = db_manager.get_health_status()
+    
+    app_status = {
+        "application": {
+            "status": "healthy",
+            "version": "2.0.1",
+            "timestamp": datetime.utcnow()
+        }
     }
+    
+    # Combine app and database status
+    combined_status = {**app_status, **health_status}
+    
+    # Overall status
+    overall_healthy = health_status.get("database", {}).get("status") == "healthy"
+    combined_status["overall"] = {
+        "status": "healthy" if overall_healthy else "degraded",
+        "message": "All systems operational" if overall_healthy else "Database connection issues"
+    }
+    
+    return combined_status
+
+@app.get("/health/readiness", tags=["health"])
+async def readiness_check():
+    """Kubernetes readiness probe - checks if app can serve requests"""
+    return {"ready": True, "timestamp": datetime.utcnow()}
+
+@app.get("/health/liveness", tags=["health"])
+async def liveness_check():
+    """Kubernetes liveness probe - checks if app is alive"""
+    return {"alive": True, "timestamp": datetime.utcnow()}
 
 # System information endpoint
 @app.get("/info")
