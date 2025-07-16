@@ -54,11 +54,8 @@ def check_database_connection():
     db_manager = get_database_manager()
     return db_manager.test_connection()
 
-# Backward compatibility
-def get_db():
-    """Database session dependency for FastAPI"""
-    from .core.database_manager import get_db
-    return get_db()
+# Remove this - we're already importing get_db from database_manager above
+# The import line already handles this: from .core.database_manager import get_database_manager, get_db
 
 # Database initialization
 def init_database():
