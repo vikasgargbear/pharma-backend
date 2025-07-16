@@ -453,6 +453,30 @@ async def fix_batch_schema(db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Schema fix failed: {str(e)}")
 
+@app.get("/check-batch-columns")
+async def check_batch_columns(db: Session = Depends(get_db)):
+    """Check what columns actually exist in the batches table"""
+    try:
+        result = db.execute(text("""
+            SELECT column_name, data_type, is_nullable 
+            FROM information_schema.columns 
+            WHERE table_name = 'batches' 
+            ORDER BY ordinal_position
+        """))
+        
+        columns = []
+        for row in result:
+            columns.append({
+                "column_name": row[0],
+                "data_type": row[1], 
+                "is_nullable": row[2]
+            })
+            
+        return {"table": "batches", "columns": columns}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Schema check failed: {str(e)}")
+
 # All API routes are now handled by modular routers
 # See /routers/ directory for endpoint implementations
 
