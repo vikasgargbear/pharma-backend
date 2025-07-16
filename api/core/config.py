@@ -16,8 +16,8 @@ except ImportError:
 
 
 class Settings(BaseSettings):
-    # Database - Supabase Compatible
-    DATABASE_URL: str = "sqlite:///./data/pharma_prod.db"
+    # Database - Supabase Compatible (Railway compatible)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./data/pharma_prod.db")
     
     # Supabase Configuration
     SUPABASE_URL: Optional[str] = None
@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    PORT: int = int(os.getenv("PORT", "8000"))
     
     # Error Tracking
     SENTRY_DSN: Optional[str] = os.getenv("SENTRY_DSN")

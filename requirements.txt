@@ -40,3 +40,5 @@ email-validator==2.1.0       # Email validation
 python-dotenv==1.0.0         # Environment variables
 bleach==6.1.0                # HTML sanitization
 phonenumbers==8.13.25        # Phone number validation
+supabase==2.3.4              # Supabase client for Python
+requests==2.31.0             # HTTP library for health checks

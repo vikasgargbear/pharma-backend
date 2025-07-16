@@ -1249,3 +1249,39 @@ class ComplianceCheck(Base):
     resolved_at = Column(DateTime)
 
 # Note: FileUpload model is already defined at the top of this file
+
+# ----------------- STOCK ADJUSTMENTS -----------------
+class StockAdjustment(Base):
+    __tablename__ = "stock_adjustments"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    adjustment_type = Column(String(50), nullable=False)  # increase, decrease, correction
+    adjustment_date = Column(DateTime, default=datetime.utcnow)
+    total_items = Column(Integer, nullable=False)
+    total_value = Column(Numeric(10, 2), nullable=False)
+    reason = Column(Text, nullable=False)
+    approved_by = Column(Integer, ForeignKey("users.user_id"))
+    reference_number = Column(String(100))
+    created_by = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String(20), default="pending")  # pending, approved, rejected
+    
+    # Relationships
+    items = relationship("StockAdjustmentItem", back_populates="adjustment", cascade="all, delete-orphan")
+
+class StockAdjustmentItem(Base):
+    __tablename__ = "stock_adjustment_items"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    adjustment_id = Column(Integer, ForeignKey("stock_adjustments.id", ondelete="CASCADE"))
+    product_id = Column(Integer, ForeignKey("products.product_id"))
+    batch_id = Column(Integer, ForeignKey("batches.batch_id"), nullable=True)
+    quantity_before = Column(Integer, nullable=False)
+    quantity_after = Column(Integer, nullable=False)
+    quantity_adjusted = Column(Integer, nullable=False)
+    unit_cost = Column(Numeric(10, 2))
+    total_cost = Column(Numeric(10, 2))
+    remarks = Column(Text)
+    
+    # Relationships
+    adjustment = relationship("StockAdjustment", back_populates="items")
+    product = relationship("Product")
+    batch = relationship("Batch")

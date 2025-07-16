@@ -36,9 +36,9 @@ try:
     from .routers import (
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
-        sales_returns, simple_delivery, tax_entries, users
+        sales_returns, simple_delivery, stock_adjustments, tax_entries, users
     )
-    # Temporarily disabled due to schema/model issues: challans, stock_adjustments
+    # Temporarily disabled due to schema/model issues: challans
 except ImportError:
     from . import models
     from . import schemas
@@ -49,9 +49,9 @@ except ImportError:
     from .routers import (
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
-        sales_returns, simple_delivery, tax_entries, users
+        sales_returns, simple_delivery, stock_adjustments, tax_entries, users
     )
-    # Temporarily disabled due to schema/model issues: challans, stock_adjustments
+    # Temporarily disabled due to schema/model issues: challans
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -195,7 +195,7 @@ app.include_router(products.router)
 app.include_router(purchases.router)
 app.include_router(sales_returns.router)
 app.include_router(simple_delivery.router)
-# app.include_router(stock_adjustments.router)  # Temporarily disabled - model missing
+app.include_router(stock_adjustments.router)  # Now enabled - model added
 app.include_router(tax_entries.router)
 app.include_router(users.router)
 
