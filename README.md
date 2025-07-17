@@ -1,9 +1,12 @@
 # 🏥 Pharmaceutical Management System - Backend
 
-**Version:** 2.0.1  
-**Status:** Production Ready - Fixed and Optimized  
+**Version:** 2.1.0  
+**Status:** Deployed with Schema Management Tools  
 **Architecture:** Modular FastAPI with Enterprise Features  
-**Database:** PostgreSQL (Supabase) with RLS
+**Database:** PostgreSQL (Supabase) with RLS  
+**API URL:** https://pharma-backend-production-0c09.up.railway.app
+
+> ⚠️ **Current Issue**: Schema mismatch between models and database. Use `/database-tools` endpoints to inspect and fix.
 
 ---
 
@@ -244,8 +247,33 @@ def get_products():
 - ✅ Use generic CRUD for basic operations
 - ✅ Add proper type hints
 - ✅ Include docstrings for all functions
-- ✅ Use custom exceptions from security module
-- ✅ Follow RESTful API patterns
+
+---
+
+## 🔨 **Database Schema Management**
+
+### **Database Tools API**
+The system includes comprehensive database management tools at `/database-tools/*`:
+
+#### **Available Endpoints:**
+- `GET /database-tools/schema/inspect` - Full database schema inspection
+- `GET /database-tools/schema/tables` - List all tables with statistics
+- `GET /database-tools/schema/table/{name}` - Detailed table information
+- `POST /database-tools/schema/auto-fix` - Automatically fix common schema issues
+- `GET /database-tools/schema/generate-models` - Generate SQLAlchemy models from database
+- `GET /database-tools/schema/test-query/{table}` - Test queries on specific tables
+
+#### **Quick Schema Fix:**
+```bash
+# 1. Inspect current schema
+curl https://pharma-backend-production-0c09.up.railway.app/database-tools/schema/inspect
+
+# 2. Auto-fix common issues
+curl -X POST https://pharma-backend-production-0c09.up.railway.app/database-tools/schema/auto-fix
+
+# 3. Generate matching models
+curl https://pharma-backend-production-0c09.up.railway.app/database-tools/schema/generate-models > models_new.py
+```
 
 ---
 

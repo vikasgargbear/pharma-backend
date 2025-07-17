@@ -38,7 +38,7 @@ try:
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
         sales_returns, simple_delivery, stock_adjustments, tax_entries, users,
-        schema_fix, database_tools
+        database_tools
     )
     # Temporarily disabled due to schema/model issues: challans
 except ImportError:
@@ -52,7 +52,7 @@ except ImportError:
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
         sales_returns, simple_delivery, stock_adjustments, tax_entries, users,
-        schema_fix, database_tools
+        database_tools
     )
     # Temporarily disabled due to schema/model issues: challans
 
@@ -206,7 +206,6 @@ app.include_router(simple_delivery.router)
 app.include_router(stock_adjustments.router)  # Now enabled - model added
 app.include_router(tax_entries.router)
 app.include_router(users.router)
-app.include_router(schema_fix.router)  # Temporary schema fix router
 app.include_router(database_tools.router)  # Database management tools
 
 # Request timing middleware
@@ -347,7 +346,7 @@ async def detailed_health_check():
     app_status = {
         "application": {
             "status": "healthy",
-            "version": "2.1.0",  # Schema inspection version
+            "version": "2.2.0",  # Clean version with database tools
             "timestamp": datetime.utcnow()
         }
     }
@@ -390,134 +389,6 @@ async def system_info():
         }
     }
 
-@app.get("/debug-batch-model")
-async def debug_batch_model():
-    """Debug what columns the Batch model thinks it has"""
-    try:
-        from .models import Batch
-        
-        columns = []
-        for col in Batch.__table__.columns:
-            columns.append({
-                "name": col.name,
-                "type": str(col.type),
-                "key": col.key,
-                "python_attr": col.key
-            })
-        
-        # Check for specific attributes
-        has_mfg_date = hasattr(Batch, 'mfg_date')
-        has_manufacturing_date = hasattr(Batch, 'manufacturing_date')
-        
-        return {
-            "table_name": Batch.__tablename__,
-            "columns": columns,
-            "has_mfg_date_attr": has_mfg_date,
-            "has_manufacturing_date_attr": has_manufacturing_date,
-            "python_attrs": [attr for attr in dir(Batch) if not attr.startswith('_') and not callable(getattr(Batch, attr))]
-        }
-    except Exception as e:
-        return {"error": str(e), "traceback": str(e)}
-
-@app.post("/fix-batch-schema")
-async def fix_batch_schema(db: Session = Depends(get_db)):
-    """Fix the batch schema by renaming mfg_date to manufacturing_date"""
-    try:
-        # Check if mfg_date column exists
-        result = db.execute(text("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'batches' 
-            AND column_name = 'mfg_date'
-        """))
-        
-        if result.fetchone():
-            # Rename the column
-            db.execute(text("ALTER TABLE batches RENAME COLUMN mfg_date TO manufacturing_date"))
-            db.commit()
-            return {"status": "success", "message": "Column renamed from mfg_date to manufacturing_date"}
-        else:
-            # Check if manufacturing_date already exists
-            result = db.execute(text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'batches' 
-                AND column_name = 'manufacturing_date'
-            """))
-            
-            if result.fetchone():
-                return {"status": "info", "message": "manufacturing_date column already exists"}
-            else:
-                return {"status": "error", "message": "Neither mfg_date nor manufacturing_date found"}
-                
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Schema fix failed: {str(e)}")
-
-@app.get("/check-batch-columns")
-async def check_batch_columns(db: Session = Depends(get_db)):
-    """Check what columns actually exist in the batches table"""
-    try:
-        result = db.execute(text("""
-            SELECT column_name, data_type, is_nullable 
-            FROM information_schema.columns 
-            WHERE table_name = 'batches' 
-            ORDER BY ordinal_position
-        """))
-        
-        columns = []
-        for row in result:
-            columns.append({
-                "column_name": row[0],
-                "data_type": row[1], 
-                "is_nullable": row[2]
-            })
-            
-        return {"table": "batches", "columns": columns}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Schema check failed: {str(e)}")
-
-@app.get("/inspect-schema")
-async def inspect_schema(db: Session = Depends(get_db)):
-    """Inspect all tables and columns in the database"""
-    try:
-        # Get all tables
-        tables_result = db.execute(text("""
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_type = 'BASE TABLE'
-            ORDER BY table_name
-        """))
-        
-        schema_info = {}
-        
-        for table_row in tables_result:
-            table_name = table_row[0]
-            
-            # Get columns for this table
-            columns_result = db.execute(text("""
-                SELECT column_name, data_type, is_nullable, column_default
-                FROM information_schema.columns 
-                WHERE table_name = :table_name 
-                AND table_schema = 'public'
-                ORDER BY ordinal_position
-            """), {"table_name": table_name})
-            
-            schema_info[table_name] = []
-            for col in columns_result:
-                schema_info[table_name].append({
-                    "name": col[0],
-                    "type": col[1],
-                    "nullable": col[2] == 'YES',
-                    "default": col[3]
-                })
-        
-        return {"database_schema": schema_info}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Schema inspection failed: {str(e)}")
 
 # All API routes are now handled by modular routers
 # See /routers/ directory for endpoint implementations
