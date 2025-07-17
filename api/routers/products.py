@@ -21,7 +21,17 @@ product_crud = create_crud(Product)
 @router.post("/", response_model=ProductResponse)
 def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     """Create a new product"""
-    return product_crud.create(db=db, obj_in=product)
+    # Ensure org_id is set
+    product_dict = product.dict()
+    if not product_dict.get('org_id'):
+        product_dict['org_id'] = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
+    
+    # Create product with the dict
+    db_product = Product(**product_dict)
+    db.add(db_product)
+    db.commit()
+    db.refresh(db_product)
+    return db_product
 
 @router.get("/", response_model=List[ProductResponse])
 def get_products(
