@@ -41,8 +41,8 @@ async def create_default_organization(db: Session = Depends(get_db)):
         # Create new organization
         new_org_id = str(uuid.uuid4())
         db.execute(text("""
-            INSERT INTO organizations (org_id, org_name, org_code, is_active)
-            VALUES (:org_id, 'Default Pharma', 'DEFAULT', true)
+            INSERT INTO organizations (org_id, org_name, business_type, is_active)
+            VALUES (:org_id, 'Default Pharma', 'pharmacy', true)
         """), {"org_id": new_org_id})
         
         db.commit()
@@ -62,7 +62,7 @@ async def list_organizations(db: Session = Depends(get_db)):
     """List all organizations"""
     try:
         result = db.execute(text("""
-            SELECT org_id, org_name, org_code, is_active 
+            SELECT org_id, org_name, business_type, is_active 
             FROM organizations 
             ORDER BY created_at DESC
         """))
@@ -72,7 +72,7 @@ async def list_organizations(db: Session = Depends(get_db)):
             orgs.append({
                 "org_id": str(row[0]),
                 "org_name": row[1],
-                "org_code": row[2],
+                "business_type": row[2],
                 "is_active": row[3]
             })
         
