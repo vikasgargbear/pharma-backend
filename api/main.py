@@ -30,7 +30,7 @@ from datetime import date
 # FIXED: Import issues when running as module vs direct execution
 # This allows the app to work with both 'python -m api.main' and 'uvicorn api.main:app'
 try:
-    from . import models, schemas, crud
+    from . import models, schemas  # Removed crud import - causing crashes
     from .database import SessionLocal, engine, get_db, init_database, check_database_connection
     from .core.config import settings
     # Import only working routers (others disabled due to missing models)
@@ -47,8 +47,7 @@ try:
     # Temporarily disabled due to schema/model issues: challans
 except ImportError:
     from . import models
-    from . import schemas
-    from . import crud
+    from . import schemas  # Removed crud import - causing crashes
     from .database import SessionLocal, engine, get_db, init_database, check_database_connection
     from .core.config import settings
     # Import only working routers (others disabled due to missing models)
