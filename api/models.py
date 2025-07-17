@@ -3,7 +3,8 @@ SQLAlchemy models generated from actual database schema
 Auto-generated to match the existing database exactly
 """
 
-from sqlalchemy import Column, String, Integer, BigInteger, Float, Date, DateTime, ForeignKey, Text, Numeric, Boolean, JSON
+from sqlalchemy import Column, String, Integer, BigInteger, Float, Date, DateTime, ForeignKey, Text, Numeric, Boolean, JSON, ARRAY
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -16,7 +17,7 @@ class Product(Base):
     __tablename__ = "products"
 
     product_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
+    org_id = Column(UUID(as_uuid=True), nullable=False)  # Required UUID field
     product_code = Column(Text, nullable=False)
     product_name = Column(Text, nullable=False)
     generic_name = Column(Text)
@@ -53,12 +54,12 @@ class Product(Base):
     pack_details = Column(JSON)
     barcode = Column(Text)
     barcode_type = Column(Text, default="EAN13")
-    alternate_barcodes = Column(String)
+    alternate_barcodes = Column(ARRAY(Text))
     storage_location = Column(Text)
     shelf_life_days = Column(Integer)
     notes = Column(Text)
-    tags = Column(String)
-    search_keywords = Column(String)
+    tags = Column(ARRAY(Text))
+    search_keywords = Column(ARRAY(Text))
     category_path = Column(Text)
     is_active = Column(Boolean, default=True)
     is_discontinued = Column(Boolean, default=False)

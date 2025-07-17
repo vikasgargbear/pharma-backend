@@ -4,7 +4,7 @@ from datetime import datetime, date
 
 # ---------------- Products ----------------
 class ProductBase(BaseModel):
-    org_id: Optional[str] = Field(None, example="550e8400-e29b-41d4-a716-446655440000")
+    org_id: Optional[str] = Field("550e8400-e29b-41d4-a716-446655440000", example="550e8400-e29b-41d4-a716-446655440000")
     product_code: str = Field(..., example="PARA500")
     product_name: str = Field(..., example="Paracetamol 500mg")
     generic_name: Optional[str] = Field(None, example="Paracetamol")
@@ -41,12 +41,12 @@ class ProductBase(BaseModel):
     pack_details: Optional[dict] = Field(None, example={"strips": 10, "tablets_per_strip": 10})
     barcode: Optional[str] = Field(None, example="8901030865278")
     barcode_type: Optional[str] = Field("EAN13", example="EAN13")
-    alternate_barcodes: Optional[str] = Field(None, example="1234567890123")
+    alternate_barcodes: Optional[List[str]] = Field(None, example=["1234567890123"])
     storage_location: Optional[str] = Field(None, example="A1-B2")
     shelf_life_days: Optional[int] = Field(None, example=730)
     notes: Optional[str] = Field(None, example="Store in cool dry place")
-    tags: Optional[str] = Field(None, example="fever,pain-relief")
-    search_keywords: Optional[str] = Field(None, example="paracetamol,fever,headache")
+    tags: Optional[List[str]] = Field(None, example=["fever", "pain-relief"])
+    search_keywords: Optional[List[str]] = Field(None, example=["paracetamol", "fever", "headache"])
     category_path: Optional[str] = Field(None, example="medication/fever")
     is_active: Optional[bool] = Field(True, example=True)
     is_discontinued: Optional[bool] = Field(False, example=False)
