@@ -13,6 +13,10 @@ from ..migrations.add_customer_columns import (
     create_sample_customer_data,
     get_existing_columns
 )
+from ..migrations.add_order_columns import (
+    add_order_enterprise_columns,
+    create_sample_order_data
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,39 +91,104 @@ async def create_sample_customers(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/add-order-columns")
+async def run_order_migration(db: Session = Depends(get_db)):
+    """Add all missing columns for enterprise order management"""
+    try:
+        logger.info("Starting order column migration...")
+        result = add_order_enterprise_columns(db)
+        
+        if result["success"]:
+            logger.info(f"Order migration successful: {result['message']}")
+        else:
+            logger.error(f"Order migration failed: {result['message']}")
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Order migration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/create-sample-orders")
+async def create_sample_orders(db: Session = Depends(get_db)):
+    """Create sample order data for testing"""
+    try:
+        logger.info("Creating sample order data...")
+        result = create_sample_order_data(db)
+        
+        if result["success"]:
+            logger.info(f"Sample orders created: {result['message']}")
+        else:
+            logger.error(f"Sample orders failed: {result['message']}")
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Sample order error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/migration-plan")
 async def get_migration_plan():
     """Get the migration plan for scaling the database"""
     return {
-        "description": "Enterprise Customer Management Migration Plan",
-        "steps": [
-            {
-                "step": 1,
-                "action": "Check existing columns",
-                "endpoint": "GET /migrations/v2/check-customer-columns",
-                "safe": True
-            },
-            {
-                "step": 2,
-                "action": "Add missing columns",
-                "endpoint": "POST /migrations/v2/add-customer-columns",
-                "safe": True,
-                "note": "Adds columns without affecting existing data"
-            },
-            {
-                "step": 3,
-                "action": "Create sample data",
-                "endpoint": "POST /migrations/v2/create-sample-customers",
-                "safe": True,
-                "note": "Only creates data if table is empty"
-            },
-            {
-                "step": 4,
-                "action": "Test customer endpoints",
-                "endpoint": "GET /api/v1/customers/",
-                "safe": True
-            }
-        ],
+        "description": "Enterprise Pharma System Migration Plan",
+        "customer_migration": {
+            "completed": True,
+            "steps": [
+                {
+                    "step": 1,
+                    "action": "Check existing columns",
+                    "endpoint": "GET /migrations/v2/check-customer-columns",
+                    "safe": True
+                },
+                {
+                    "step": 2,
+                    "action": "Add missing columns",
+                    "endpoint": "POST /migrations/v2/add-customer-columns",
+                    "safe": True,
+                    "note": "Adds columns without affecting existing data"
+                },
+                {
+                    "step": 3,
+                    "action": "Create sample data",
+                    "endpoint": "POST /migrations/v2/create-sample-customers",
+                    "safe": True,
+                    "note": "Only creates data if table is empty"
+                },
+                {
+                    "step": 4,
+                    "action": "Test customer endpoints",
+                    "endpoint": "GET /api/v1/customers/",
+                    "safe": True
+                }
+            ]
+        },
+        "order_migration": {
+            "steps": [
+                {
+                    "step": 1,
+                    "action": "Add order columns",
+                    "endpoint": "POST /migrations/v2/add-order-columns",
+                    "safe": True,
+                    "note": "Adds order management columns"
+                },
+                {
+                    "step": 2,
+                    "action": "Create sample orders",
+                    "endpoint": "POST /migrations/v2/create-sample-orders",
+                    "safe": True,
+                    "note": "Creates orders with products"
+                },
+                {
+                    "step": 3,
+                    "action": "Test order endpoints",
+                    "endpoint": "GET /api/v1/orders/",
+                    "safe": True
+                }
+            ]
+        },
         "benefits": [
             "GST compliance with GSTIN validation",
             "Credit limit management",
