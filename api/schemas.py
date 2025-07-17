@@ -227,3 +227,9 @@ class ComplianceDashboard(BaseModel):
     expiring_soon: int = 0
     expired: int = 0
     drug_license_status: Optional[str] = "valid"
+
+class TaxEntryCreate(BaseModel):
+    entry_type: str
+    amount: Decimal
+    tax_amount: Optional[Decimal] = None
+    description: Optional[str] = None

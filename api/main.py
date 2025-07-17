@@ -35,8 +35,7 @@ try:
     from .core.config import settings
     # Import only working routers (others disabled due to missing models)
     from .routers import (
-        analytics, batches, orders, products, 
-        simple_delivery, tax_entries, db_inspect, migrations, organizations, test_simple
+        products, simple_delivery, db_inspect, migrations, organizations, test_simple
     )
     # Disabled routers that use non-existent models:
     # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
@@ -52,8 +51,7 @@ except ImportError:
     from .core.config import settings
     # Import only working routers (others disabled due to missing models)
     from .routers import (
-        analytics, batches, orders, products, 
-        simple_delivery, tax_entries, db_inspect, migrations, organizations, test_simple
+        products, simple_delivery, db_inspect, migrations, organizations, test_simple
     )
     # Disabled routers that use non-existent models:
     # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
