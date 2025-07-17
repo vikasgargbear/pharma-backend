@@ -137,3 +137,20 @@ async def fix_column_name(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to rename column: {str(e)}")
+
+@router.get("/query")
+async def execute_query(sql: str, db: Session = Depends(get_db)):
+    """Execute a simple SELECT query (read-only)"""
+    try:
+        if not sql.strip().upper().startswith("SELECT"):
+            raise HTTPException(status_code=400, detail="Only SELECT queries allowed")
+            
+        result = db.execute(text(sql))
+        rows = []
+        for row in result:
+            rows.append(dict(row._mapping))
+        
+        return {"result": rows, "count": len(rows)}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
