@@ -12,7 +12,7 @@ try:
 except ImportError:
     from database import Base
 
-class Product(Base):
+class Products(Base):
     __tablename__ = "products"
 
     product_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -75,7 +75,7 @@ class Product(Base):
     pack_type = Column(Text)
 
 
-class Batch(Base):
+class Batches(Base):
     __tablename__ = "batches"
 
     batch_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -119,7 +119,7 @@ class Batch(Base):
     qa_certificate_url = Column(Text)
 
 
-class Customer(Base):
+class Customers(Base):
     __tablename__ = "customers"
 
     customer_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -165,7 +165,7 @@ class Customer(Base):
     visiting_days = Column(String)
 
 
-class Order(Base):
+class Orders(Base):
     __tablename__ = "orders"
 
     order_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -210,7 +210,7 @@ class Order(Base):
     applied_scheme_id = Column(Integer)
 
 
-class OrderItem(Base):
+class OrderItems(Base):
     __tablename__ = "order_items"
 
     order_item_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -235,7 +235,7 @@ class OrderItem(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class User(Base):
+class Users(Base):
     __tablename__ = "users"
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -246,7 +246,7 @@ class User(Base):
     created_at = Column(DateTime)
 
 
-class Payment(Base):
+class Payments(Base):
     __tablename__ = "payments"
 
     payment_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -270,7 +270,7 @@ class Payment(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Supplier(Base):
+class Suppliers(Base):
     __tablename__ = "suppliers"
 
     supplier_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -308,7 +308,7 @@ class Supplier(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Purchase(Base):
+class Purchases(Base):
     __tablename__ = "purchases"
 
     purchase_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -338,7 +338,7 @@ class Purchase(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Organization(Base):
+class Organizations(Base):
     __tablename__ = "organizations"
 
     org_id = Column(String, nullable=False)
@@ -376,7 +376,7 @@ class Organization(Base):
     payment_gateway_config = Column(JSON)
 
 
-class InventoryMovement(Base):
+class InventoryMovements(Base):
     __tablename__ = "inventory_movements"
 
     movement_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -402,7 +402,7 @@ class InventoryMovement(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Category(Base):
+class Categories(Base):
     __tablename__ = "categories"
 
     category_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -415,7 +415,7 @@ class Category(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class UnitOfMeasure(Base):
+class UnitsOfMeasure(Base):
     __tablename__ = "units_of_measure"
 
     uom_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -431,7 +431,7 @@ class UnitOfMeasure(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class OrgUser(Base):
+class OrgUsers(Base):
     __tablename__ = "org_users"
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -462,7 +462,7 @@ class OrgUser(Base):
     app_metadata = Column(JSON, default="{}")
 
 
-class OrgBranch(Base):
+class OrgBranches(Base):
     __tablename__ = "org_branches"
 
     branch_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -480,7 +480,7 @@ class OrgBranch(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
-class PriceList(Base):
+class PriceLists(Base):
     __tablename__ = "price_lists"
 
     price_list_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -497,7 +497,7 @@ class PriceList(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class TaxEntry(Base):
+class TaxEntries(Base):
     __tablename__ = "tax_entries"
 
     tax_entry_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -514,7 +514,7 @@ class TaxEntry(Base):
     created_at = Column(DateTime)
 
 
-class ChallanItem(Base):
+class ChallanItems(Base):
     __tablename__ = "challan_items"
 
     challan_item_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -533,7 +533,7 @@ class ChallanItem(Base):
     created_at = Column(DateTime)
 
 
-class Challan(Base):
+class Challans(Base):
     __tablename__ = "challans"
 
     challan_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -568,7 +568,7 @@ class Challan(Base):
     updated_at = Column(DateTime)
 
 
-class SalesReturn(Base):
+class SalesReturns(Base):
     __tablename__ = "sales_returns"
 
     return_id = Column(Integer, primary_key=True, autoincrement=True)

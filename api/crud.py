@@ -10,6 +10,20 @@ from typing import List, Dict
 from sqlalchemy import func, and_
 import json
 
+# NOTE: This file contains CRUD functions for various models.
+# Some functions reference models that don't exist in the current database:
+# - PaymentAllocation, CustomerAdvancePayment, BatchLocation, CDSCOCompliance
+# - Cart, CartItem, ChallanTracking, CustomerCreditNote, CustomerOutstanding
+# - DiscountScheme, InventoryTransaction, JournalEntry, LicenseDocument
+# - MedicalRepresentative, PriceHistory, PurchaseItem, PurchaseReturn
+# - PurchaseReturnItem, RegulatoryLicense, StateDrugControllerCompliance
+# - StorageLocation, VendorPayment, BatchInventoryStatus, AppliedDiscount
+# - LoyaltyProgram, CustomerLoyalty, LoyaltyTransaction, LoyaltyRedemption
+# - UPIPayment, FileUpload
+# 
+# These functions will fail if called. Only use functions for models that exist
+# in the database (see models.py for the current list of available models).
+
 # ----------------- PRODUCTS -----------------
 
 def create_product(db: Session, product: schemas.ProductCreate):
