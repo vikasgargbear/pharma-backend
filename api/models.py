@@ -341,7 +341,7 @@ class Purchase(Base):
 class Organization(Base):
     __tablename__ = "organizations"
 
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, primary_key=True)
     org_name = Column(Text, nullable=False)
     business_type = Column(Text, default="pharmaceutical")
     company_registration_number = Column(Text)
