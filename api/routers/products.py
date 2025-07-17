@@ -10,7 +10,7 @@ from ..core.crud_base import create_crud
 from ..core.security import ResourceNotFoundError
 from ..database import get_db
 from ..models import Product
-from ..schemas import Product as ProductSchema, ProductCreate
+from ..schemas import ProductResponse, ProductCreate
 
 # Create router
 router = APIRouter(prefix="/products", tags=["products"])
@@ -18,12 +18,12 @@ router = APIRouter(prefix="/products", tags=["products"])
 # Create CRUD instance - replaces 200+ lines of repetitive code!
 product_crud = create_crud(Product)
 
-@router.post("/", response_model=ProductSchema)
+@router.post("/", response_model=ProductResponse)
 def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     """Create a new product"""
     return product_crud.create(db=db, obj_in=product)
 
-@router.get("/", response_model=List[ProductSchema])
+@router.get("/", response_model=List[ProductResponse])
 def get_products(
     skip: int = 0, limit: int = 100, category: Optional[str] = None,
     manufacturer: Optional[str] = None, db: Session = Depends(get_db)
@@ -37,7 +37,7 @@ def get_products(
     
     return product_crud.get_multi(db=db, skip=skip, limit=limit, filters=filters)
 
-@router.get("/{product_id}", response_model=ProductSchema)
+@router.get("/{product_id}", response_model=ProductResponse)
 def get_product(product_id: int, db: Session = Depends(get_db)):
     """Get a single product by ID"""
     product = product_crud.get(db=db, id=product_id)
@@ -45,7 +45,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         raise ResourceNotFoundError("Product", product_id)
     return product
 
-@router.put("/{product_id}", response_model=ProductSchema) 
+@router.put("/{product_id}", response_model=ProductResponse) 
 def update_product(product_id: int, product_update: ProductCreate, db: Session = Depends(get_db)):
     """Update a product"""
     db_product = product_crud.get(db=db, id=product_id)
