@@ -36,7 +36,7 @@ try:
     # Import only working routers (others disabled due to missing models)
     from .routers import (
         analytics, batches, orders, products, 
-        simple_delivery, tax_entries, db_inspect, migrations, organizations
+        simple_delivery, tax_entries, db_inspect, migrations, organizations, test_simple
     )
     # Disabled routers that use non-existent models:
     # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
@@ -54,7 +54,7 @@ except ImportError:
     # Import only working routers (others disabled due to missing models)
     from .routers import (
         analytics, batches, orders, products, 
-        simple_delivery, tax_entries, db_inspect, migrations, organizations
+        simple_delivery, tax_entries, db_inspect, migrations, organizations, test_simple
     )
     # Disabled routers that use non-existent models:
     # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
@@ -219,6 +219,7 @@ app.include_router(tax_entries.router)
 app.include_router(db_inspect.router)  # Simple database inspection
 app.include_router(migrations.router, prefix="/migrations")  # Database migrations
 app.include_router(organizations.router)  # Organizations management
+app.include_router(test_simple.router)  # Simple test endpoints
 
 # Request timing middleware
 @app.middleware("http")
