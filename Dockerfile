@@ -64,5 +64,5 @@ USER pharmauser
 # Railway will set the PORT dynamically
 
 # Start the application
-# Using shell form to expand $PORT variable
-CMD uvicorn api.main_minimal:app --host 0.0.0.0 --port ${PORT:-8000}
+# Using proper shell form to expand environment variables
+CMD ["/bin/sh", "-c", "uvicorn api.main_minimal:app --host 0.0.0.0 --port ${PORT:-8000}"]
