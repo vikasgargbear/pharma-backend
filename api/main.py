@@ -30,7 +30,7 @@ from datetime import date
 # FIXED: Import issues when running as module vs direct execution
 # This allows the app to work with both 'python -m api.main' and 'uvicorn api.main:app'
 # Import core modules
-from . import models, schemas
+from . import models, base_schemas as schemas
 from .database import SessionLocal, engine, get_db, init_database, check_database_connection
 from .core.config import settings
 

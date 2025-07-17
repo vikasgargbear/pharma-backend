@@ -11,7 +11,7 @@ from ..core.crud_base import create_crud
 from ..core.security import ResourceNotFoundError
 from ..database import get_db
 from ..models import Product
-from ..schemas import ProductResponse, ProductCreate
+from ..base_schemas import ProductResponse, ProductCreate
 
 # Create router
 router = APIRouter(prefix="/products", tags=["products"])
