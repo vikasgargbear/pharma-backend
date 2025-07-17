@@ -153,3 +153,17 @@ class InventoryMovement(Base):
     product_id = Column(Integer)
     movement_type = Column(Text)
     quantity = Column(Integer)
+
+class SalesReturn(Base):
+    __tablename__ = "sales_returns"
+    return_id = Column(Integer, primary_key=True)
+    order_id = Column(Integer)
+    product_id = Column(Integer)
+    quantity = Column(Integer)
+    reason = Column(Text)
+
+class Purchase(Base):
+    __tablename__ = "purchases"
+    purchase_id = Column(Integer, primary_key=True)
+    supplier_id = Column(Integer)
+    purchase_date = Column(DateTime)

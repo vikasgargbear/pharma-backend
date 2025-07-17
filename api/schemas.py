@@ -220,3 +220,10 @@ class Batch(BatchBase):
         from_attributes = True
 
 # Add any other missing schemas as needed
+
+# Compliance schemas
+class ComplianceDashboard(BaseModel):
+    total_licenses: int = 0
+    expiring_soon: int = 0
+    expired: int = 0
+    drug_license_status: Optional[str] = "valid"
