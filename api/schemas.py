@@ -4,7 +4,7 @@ from datetime import datetime, date
 
 # ---------------- Products ----------------
 class ProductBase(BaseModel):
-    org_id: str = Field(..., example="org-123")
+    org_id: Optional[str] = Field(None, example="550e8400-e29b-41d4-a716-446655440000")
     product_code: str = Field(..., example="PARA500")
     product_name: str = Field(..., example="Paracetamol 500mg")
     generic_name: Optional[str] = Field(None, example="Paracetamol")

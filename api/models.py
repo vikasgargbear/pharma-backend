@@ -16,7 +16,7 @@ class Product(Base):
     __tablename__ = "products"
 
     product_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     product_code = Column(Text, nullable=False)
     product_name = Column(Text, nullable=False)
     generic_name = Column(Text)
@@ -79,7 +79,7 @@ class Batch(Base):
     __tablename__ = "batches"
 
     batch_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     product_id = Column(Integer, nullable=False)
     batch_number = Column(Text, nullable=False)
     lot_number = Column(Text)
@@ -123,7 +123,7 @@ class Customer(Base):
     __tablename__ = "customers"
 
     customer_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     customer_code = Column(Text, nullable=False)
     customer_name = Column(Text, nullable=False)
     customer_type = Column(Text, default="retail")
@@ -169,7 +169,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     order_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     order_number = Column(Text, nullable=False)
     order_date = Column(Date, nullable=False)
     order_time = Column(String)
@@ -250,7 +250,7 @@ class Payment(Base):
     __tablename__ = "payments"
 
     payment_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     payment_number = Column(Text, nullable=False)
     payment_date = Column(Date, nullable=False)
     customer_id = Column(Integer)
@@ -274,7 +274,7 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     supplier_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     supplier_code = Column(Text, nullable=False)
     supplier_name = Column(Text, nullable=False)
     company_name = Column(Text)
@@ -312,7 +312,7 @@ class Purchase(Base):
     __tablename__ = "purchases"
 
     purchase_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     purchase_number = Column(Text, nullable=False)
     purchase_date = Column(Date, nullable=False)
     supplier_id = Column(Integer, nullable=False)
@@ -380,7 +380,7 @@ class InventoryMovement(Base):
     __tablename__ = "inventory_movements"
 
     movement_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     movement_date = Column(DateTime, default=datetime.utcnow)
     movement_type = Column(Text, nullable=False)
     product_id = Column(Integer, nullable=False)
@@ -435,7 +435,7 @@ class OrgUser(Base):
     __tablename__ = "org_users"
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     full_name = Column(Text, nullable=False)
     email = Column(Text, nullable=False)
     phone = Column(Text)
@@ -466,7 +466,7 @@ class OrgBranch(Base):
     __tablename__ = "org_branches"
 
     branch_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     branch_name = Column(Text, nullable=False)
     branch_code = Column(Text, nullable=False)
     branch_type = Column(Text, default="retail")
@@ -484,7 +484,7 @@ class PriceList(Base):
     __tablename__ = "price_lists"
 
     price_list_id = Column(Integer, primary_key=True, autoincrement=True)
-    org_id = Column(String, nullable=False)
+    org_id = Column(String, nullable=True)  # Made nullable to avoid FK issues
     list_name = Column(Text, nullable=False)
     list_type = Column(Text, nullable=False)
     currency = Column(Text, default="INR")

@@ -1,0 +1,17 @@
+#!/bin/bash
+# Pre-push hook to run import tests before pushing
+# This prevents deployment failures due to import errors
+
+echo "🔍 Running pre-push checks..."
+
+# Run the import test
+python test_imports.py
+
+if [ $? -ne 0 ]; then
+    echo "❌ Pre-push check failed!"
+    echo "Fix the import errors before pushing to avoid deployment failures."
+    exit 1
+fi
+
+echo "✅ Pre-push checks passed!"
+exit 0
