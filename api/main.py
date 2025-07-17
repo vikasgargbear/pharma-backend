@@ -40,7 +40,8 @@ from .routers import (
     simple_delivery,
     db_inspect,
     migrations,
-    organizations
+    organizations,
+    customers_simple
 )
 
 # Import v1 routers
@@ -184,6 +185,7 @@ app.include_router(simple_delivery.router)
 app.include_router(db_inspect.router)
 app.include_router(migrations.router, prefix="/migrations")
 app.include_router(organizations.router)
+app.include_router(customers_simple.router)
 
 # Include v1 API routers
 app.include_router(customers_router)
