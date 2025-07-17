@@ -124,3 +124,99 @@ class ProductQuickCreate(BaseModel):
     mrp: Optional[Decimal] = Decimal("0")
     hsn_code: Optional[str] = "30049099"
     gst_percent: Optional[Decimal] = Decimal("12")
+
+
+# Additional schemas to prevent import errors in crud.py
+class CustomerCreate(BaseModel):
+    customer_name: str
+    customer_code: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+class CustomerBase(CustomerCreate):
+    customer_id: Optional[int] = None
+
+class Customer(CustomerBase):
+    customer_id: int
+    class Config:
+        from_attributes = True
+
+class OrderCreate(BaseModel):
+    customer_id: int
+    order_date: Optional[str] = None
+    total_amount: Optional[Decimal] = Decimal("0")
+
+class OrderItemCreate(BaseModel):
+    order_id: Optional[int] = None
+    product_id: int
+    quantity: int
+    price: Decimal
+
+class BatchCreate(BaseModel):
+    product_id: int
+    batch_number: str
+    expiry_date: str
+    quantity: Optional[int] = 0
+
+class PaymentCreate(BaseModel):
+    customer_id: int
+    amount: Decimal
+    payment_date: Optional[str] = None
+
+class PaymentAllocationCreate(BaseModel):
+    payment_id: int
+    order_id: int
+    amount: Decimal
+
+class CustomerAdvancePaymentCreate(BaseModel):
+    customer_id: int
+    amount: Decimal
+
+class InventoryMovementCreate(BaseModel):
+    product_id: int
+    movement_type: str
+    quantity: int
+
+class SalesReturnCreate(BaseModel):
+    order_id: int
+    product_id: int
+    quantity: int
+    reason: Optional[str] = None
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class SupplierCreate(BaseModel):
+    supplier_name: str
+    supplier_code: Optional[str] = None
+
+class PurchaseCreate(BaseModel):
+    supplier_id: int
+    purchase_date: Optional[str] = None
+
+class PurchaseItemCreate(BaseModel):
+    purchase_id: Optional[int] = None
+    product_id: int
+    quantity: int
+    price: Decimal
+
+# For batch and payments routers
+class BatchBase(BaseModel):
+    product_id: int
+    batch_number: str
+    mfg_date: Optional[str] = None
+    expiry_date: str
+    purchase_price: Optional[Decimal] = None
+    selling_price: Optional[Decimal] = None
+    quantity_available: int
+    location: Optional[str] = None
+
+class Batch(BatchBase):
+    batch_id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# Add any other missing schemas as needed

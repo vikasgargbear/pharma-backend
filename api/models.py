@@ -116,3 +116,40 @@ class Batch(Base):
     __tablename__ = "batches"
     batch_id = Column(Integer, primary_key=True)
     batch_number = Column(Text)
+    product_id = Column(Integer)
+    expiry_date = Column(DateTime)
+    quantity_available = Column(Integer)
+
+class Order(Base):
+    __tablename__ = "orders"
+    order_id = Column(Integer, primary_key=True)
+    customer_id = Column(Integer)
+    order_date = Column(DateTime)
+    total_amount = Column(Numeric)
+
+class OrderItem(Base):
+    __tablename__ = "order_items"
+    order_item_id = Column(Integer, primary_key=True)
+    order_id = Column(Integer)
+    product_id = Column(Integer)
+    quantity = Column(Integer)
+    price = Column(Numeric)
+
+class Payment(Base):
+    __tablename__ = "payments"
+    payment_id = Column(Integer, primary_key=True)
+    customer_id = Column(Integer)
+    amount = Column(Numeric)
+    payment_date = Column(DateTime)
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+    supplier_id = Column(Integer, primary_key=True)
+    supplier_name = Column(Text)
+
+class InventoryMovement(Base):
+    __tablename__ = "inventory_movements"
+    movement_id = Column(Integer, primary_key=True)
+    product_id = Column(Integer)
+    movement_type = Column(Text)
+    quantity = Column(Integer)
