@@ -35,7 +35,7 @@ try:
     from .core.config import settings
     # Import only working routers (others disabled due to missing models)
     from .routers import (
-        products, simple_delivery, db_inspect, migrations, organizations, test_simple, products_simple
+        products, simple_delivery, db_inspect, migrations, organizations, test_simple, products_simple, delivery_public
     )
     # Disabled routers that use non-existent models:
     # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
@@ -51,7 +51,7 @@ except ImportError:
     from .core.config import settings
     # Import only working routers (others disabled due to missing models)
     from .routers import (
-        products, simple_delivery, db_inspect, migrations, organizations, test_simple, products_simple
+        products, simple_delivery, db_inspect, migrations, organizations, test_simple, products_simple, delivery_public
     )
     # Disabled routers that use non-existent models:
     # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
@@ -218,6 +218,7 @@ app.include_router(migrations.router, prefix="/migrations")  # Database migratio
 app.include_router(organizations.router)  # Organizations management
 app.include_router(test_simple.router)  # Simple test endpoints
 app.include_router(products_simple.router)  # Simple products endpoints
+app.include_router(delivery_public.router)  # Public delivery endpoints
 
 # Request timing middleware
 @app.middleware("http")
