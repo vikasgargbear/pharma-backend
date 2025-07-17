@@ -17,6 +17,7 @@ from ..migrations.add_order_columns import (
     add_order_enterprise_columns,
     create_sample_order_data
 )
+from ..migrations.fix_order_columns import fix_missing_columns
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,17 @@ async def run_order_migration(db: Session = Depends(get_db)):
         
     except Exception as e:
         logger.error(f"Order migration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fix-order-columns")
+async def fix_order_columns(db: Session = Depends(get_db)):
+    """Quick fix for missing order columns"""
+    try:
+        result = fix_missing_columns(db)
+        return result
+    except Exception as e:
+        logger.error(f"Fix columns error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
