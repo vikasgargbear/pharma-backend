@@ -18,6 +18,10 @@ from ..migrations.add_order_columns import (
     create_sample_order_data
 )
 from ..migrations.fix_order_columns import fix_missing_columns
+from ..migrations.add_inventory_tables import (
+    add_inventory_enterprise_tables,
+    get_existing_tables
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +145,58 @@ async def create_sample_orders(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/add-inventory-tables")
+async def run_inventory_migration(db: Session = Depends(get_db)):
+    """Add inventory tables for batch tracking and stock movements"""
+    try:
+        logger.info("Starting inventory tables migration...")
+        result = add_inventory_enterprise_tables(db)
+        
+        if result["success"]:
+            logger.info(f"Inventory migration successful: {result['message']}")
+        else:
+            logger.error(f"Inventory migration failed: {result['message']}")
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Inventory migration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/check-inventory-tables")
+async def check_inventory_tables(db: Session = Depends(get_db)):
+    """Check if inventory tables exist"""
+    try:
+        tables = get_existing_tables(db)
+        
+        required_tables = ["batches", "inventory_movements"]
+        existing = [t for t in required_tables if t in tables]
+        missing = [t for t in required_tables if t not in tables]
+        
+        # Check batch count
+        batch_count = 0
+        movement_count = 0
+        
+        if "batches" in tables:
+            batch_count = db.execute(text("SELECT COUNT(*) FROM batches")).scalar()
+        
+        if "inventory_movements" in tables:
+            movement_count = db.execute(text("SELECT COUNT(*) FROM inventory_movements")).scalar()
+        
+        return {
+            "inventory_ready": len(missing) == 0,
+            "existing_tables": existing,
+            "missing_tables": missing,
+            "batch_count": batch_count,
+            "movement_count": movement_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking tables: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/migration-plan")
 async def get_migration_plan():
     """Get the migration plan for scaling the database"""
@@ -178,6 +234,7 @@ async def get_migration_plan():
             ]
         },
         "order_migration": {
+            "completed": True,
             "steps": [
                 {
                     "step": 1,
@@ -197,6 +254,29 @@ async def get_migration_plan():
                     "step": 3,
                     "action": "Test order endpoints",
                     "endpoint": "GET /api/v1/orders/",
+                    "safe": True
+                }
+            ]
+        },
+        "inventory_migration": {
+            "steps": [
+                {
+                    "step": 1,
+                    "action": "Check existing inventory tables",
+                    "endpoint": "GET /migrations/v2/check-inventory-tables",
+                    "safe": True
+                },
+                {
+                    "step": 2,
+                    "action": "Add inventory tables",
+                    "endpoint": "POST /migrations/v2/add-inventory-tables",
+                    "safe": True,
+                    "note": "Creates batches and inventory_movements tables"
+                },
+                {
+                    "step": 3,
+                    "action": "Test inventory endpoints",
+                    "endpoint": "GET /api/v1/inventory/stock/current",
                     "safe": True
                 }
             ]
