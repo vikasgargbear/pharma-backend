@@ -69,7 +69,7 @@ async def create_product(
                 org_id, product_code, product_name, generic_name,
                 manufacturer, hsn_code, mrp, gst_percent, is_active
             ) VALUES (
-                :org_id::uuid, :product_code, :product_name, :generic_name,
+                :org_id, :product_code, :product_name, :generic_name,
                 :manufacturer, :hsn_code, :mrp, :gst_percent, :is_active
             ) RETURNING product_id
         """), {
