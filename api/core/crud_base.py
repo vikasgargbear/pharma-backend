@@ -37,7 +37,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             if column.primary_key:
                 self.pk_column = column
                 break
-        if not self.pk_column:
+        if self.pk_column is None:
             raise ValueError(f"No primary key found for model {model.__name__}")
 
     def get(self, db: Session, id: Any) -> Optional[ModelType]:
