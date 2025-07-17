@@ -69,13 +69,29 @@ def get_products(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get products: {str(e)}")
 
-@router.get("/{product_id}", response_model=ProductResponse)
+@router.get("/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
     """Get a single product by ID"""
-    product = product_crud.get(db=db, id=product_id)
-    if not product:
-        raise ResourceNotFoundError("Product", product_id)
-    return product
+    try:
+        result = db.execute(text("""
+            SELECT * FROM products WHERE product_id = :product_id
+        """), {"product_id": product_id})
+        
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
+        
+        product_dict = dict(row._mapping)
+        # Convert UUID to string if needed
+        if product_dict.get('org_id'):
+            product_dict['org_id'] = str(product_dict['org_id'])
+            
+        return product_dict
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get product: {str(e)}")
 
 @router.put("/{product_id}", response_model=ProductResponse) 
 def update_product(product_id: int, product_update: ProductCreate, db: Session = Depends(get_db)):
