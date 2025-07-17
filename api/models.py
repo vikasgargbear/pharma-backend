@@ -98,3 +98,21 @@ class Product(Base):
     created_by = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+# Minimal models to prevent import errors
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    username = Column(Text)
+    email = Column(Text)
+
+class Customer(Base):
+    __tablename__ = "customers"
+    customer_id = Column(Integer, primary_key=True)
+    customer_name = Column(Text)
+
+class Batch(Base):
+    __tablename__ = "batches"
+    batch_id = Column(Integer, primary_key=True)
+    batch_number = Column(Text)
