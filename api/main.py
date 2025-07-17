@@ -40,6 +40,7 @@ from .routers import (
     simple_delivery,
     db_inspect,
     migrations,
+    migrations_v2,
     organizations,
     customers_simple
 )
@@ -184,6 +185,7 @@ app.include_router(products.router)
 app.include_router(simple_delivery.router)
 app.include_router(db_inspect.router)
 app.include_router(migrations.router, prefix="/migrations")
+app.include_router(migrations_v2.router)
 app.include_router(organizations.router)
 app.include_router(customers_simple.router)
 
