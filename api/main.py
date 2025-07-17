@@ -33,13 +33,17 @@ try:
     from . import models, schemas, crud
     from .database import SessionLocal, engine, get_db, init_database, check_database_connection
     from .core.config import settings
-    # Import all routers for modularization
+    # Import only working routers (others disabled due to missing models)
     from .routers import (
-        analytics, batches, compliance, customers, file_uploads,
-        inventory, loyalty, orders, payments, products, purchases,
-        sales_returns, simple_delivery, stock_adjustments, tax_entries, users,
-        db_inspect
+        analytics, batches, orders, products, 
+        simple_delivery, tax_entries, db_inspect
     )
+    # Disabled routers that use non-existent models:
+    # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
+    # inventory (InventoryTransaction), loyalty (LoyaltyAccount), 
+    # payments (BatchInventoryStatus), purchases (PurchaseItem),
+    # sales_returns (BatchInventoryStatus), stock_adjustments (BatchInventoryStatus),
+    # users (Role)
     # Temporarily disabled due to schema/model issues: challans
 except ImportError:
     from . import models
@@ -47,13 +51,17 @@ except ImportError:
     from . import crud
     from .database import SessionLocal, engine, get_db, init_database, check_database_connection
     from .core.config import settings
-    # Import all routers for modularization
+    # Import only working routers (others disabled due to missing models)
     from .routers import (
-        analytics, batches, compliance, customers, file_uploads,
-        inventory, loyalty, orders, payments, products, purchases,
-        sales_returns, simple_delivery, stock_adjustments, tax_entries, users,
-        db_inspect
+        analytics, batches, orders, products, 
+        simple_delivery, tax_entries, db_inspect
     )
+    # Disabled routers that use non-existent models:
+    # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
+    # inventory (InventoryTransaction), loyalty (LoyaltyAccount), 
+    # payments (BatchInventoryStatus), purchases (PurchaseItem),
+    # sales_returns (BatchInventoryStatus), stock_adjustments (BatchInventoryStatus),
+    # users (Role)
     # Temporarily disabled due to schema/model issues: challans
 
 # Configure Sentry for error tracking
@@ -189,23 +197,24 @@ async def rate_limiting_middleware(request: Request, call_next):
     return response
 
 # Include all routers for modular architecture
+# Note: Some routers are disabled because they reference models that don't exist in the database
 app.include_router(analytics.router)
 app.include_router(batches.router) 
 # app.include_router(challans.router)  # Temporarily disabled due to schema issues
-app.include_router(compliance.router)
-app.include_router(customers.router)
-app.include_router(file_uploads.router)
-app.include_router(inventory.router)
-app.include_router(loyalty.router)
+# app.include_router(compliance.router)  # Disabled - uses AuditLog, License models
+# app.include_router(customers.router)  # Disabled - uses CustomerCreditNote model
+# app.include_router(file_uploads.router)  # Disabled - uses FileUpload model
+# app.include_router(inventory.router)  # Disabled - uses InventoryTransaction model
+# app.include_router(loyalty.router)  # Disabled - uses LoyaltyAccount model
 app.include_router(orders.router)
-app.include_router(payments.router)
+# app.include_router(payments.router)  # Disabled - uses BatchInventoryStatus model
 app.include_router(products.router)
-app.include_router(purchases.router)
-app.include_router(sales_returns.router)
+# app.include_router(purchases.router)  # Disabled - uses PurchaseItem model
+# app.include_router(sales_returns.router)  # Disabled - uses BatchInventoryStatus model
 app.include_router(simple_delivery.router)
-app.include_router(stock_adjustments.router)  # Now enabled - model added
+# app.include_router(stock_adjustments.router)  # Disabled - uses BatchInventoryStatus model
 app.include_router(tax_entries.router)
-app.include_router(users.router)
+# app.include_router(users.router)  # Disabled - uses Role model
 # app.include_router(database_tools.router)  # Temporarily disabled - causing import issues
 app.include_router(db_inspect.router)  # Simple database inspection
 
