@@ -29,37 +29,22 @@ from datetime import date
 # Handle both package and direct imports for maximum compatibility
 # FIXED: Import issues when running as module vs direct execution
 # This allows the app to work with both 'python -m api.main' and 'uvicorn api.main:app'
-try:
-    from . import models, schemas  # Removed crud import - causing crashes
-    from .database import SessionLocal, engine, get_db, init_database, check_database_connection
-    from .core.config import settings
-    # Import only working routers (others disabled due to missing models)
-    from .routers import (
-        products, simple_delivery, db_inspect, migrations, organizations, test_simple, products_simple, delivery_public
-    )
-    # Disabled routers that use non-existent models:
-    # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
-    # inventory (InventoryTransaction), loyalty (LoyaltyAccount), 
-    # payments (BatchInventoryStatus), purchases (PurchaseItem),
-    # sales_returns (BatchInventoryStatus), stock_adjustments (BatchInventoryStatus),
-    # users (Role)
-    # Temporarily disabled due to schema/model issues: challans
-except ImportError:
-    from . import models
-    from . import schemas  # Removed crud import - causing crashes
-    from .database import SessionLocal, engine, get_db, init_database, check_database_connection
-    from .core.config import settings
-    # Import only working routers (others disabled due to missing models)
-    from .routers import (
-        products, simple_delivery, db_inspect, migrations, organizations, test_simple, products_simple, delivery_public
-    )
-    # Disabled routers that use non-existent models:
-    # compliance (AuditLog), customers (CustomerCreditNote), file_uploads (FileUpload),
-    # inventory (InventoryTransaction), loyalty (LoyaltyAccount), 
-    # payments (BatchInventoryStatus), purchases (PurchaseItem),
-    # sales_returns (BatchInventoryStatus), stock_adjustments (BatchInventoryStatus),
-    # users (Role)
-    # Temporarily disabled due to schema/model issues: challans
+# Import core modules
+from . import models, schemas
+from .database import SessionLocal, engine, get_db, init_database, check_database_connection
+from .core.config import settings
+
+# Import working routers
+from .routers import (
+    products,
+    simple_delivery,
+    db_inspect,
+    migrations,
+    organizations
+)
+
+# Import v1 routers
+from .routers.v1 import customers_router
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -193,32 +178,15 @@ async def rate_limiting_middleware(request: Request, call_next):
     response = await call_next(request)
     return response
 
-# Include all routers for modular architecture
-# Note: Some routers are disabled because they reference models that don't exist in the database
-# app.include_router(analytics.router)  # Disabled - imports crud
-# app.include_router(batches.router)   # Disabled - imports crud
-# app.include_router(challans.router)  # Temporarily disabled due to schema issues
-# app.include_router(compliance.router)  # Disabled - uses AuditLog, License models
-# app.include_router(customers.router)  # Disabled - uses CustomerCreditNote model
-# app.include_router(file_uploads.router)  # Disabled - uses FileUpload model
-# app.include_router(inventory.router)  # Disabled - uses InventoryTransaction model
-# app.include_router(loyalty.router)  # Disabled - uses LoyaltyAccount model
-# app.include_router(orders.router)  # Disabled - imports crud
-# app.include_router(payments.router)  # Disabled - uses BatchInventoryStatus model
+# Include working routers
 app.include_router(products.router)
-# app.include_router(purchases.router)  # Disabled - uses PurchaseItem model
-# app.include_router(sales_returns.router)  # Disabled - uses BatchInventoryStatus model
 app.include_router(simple_delivery.router)
-# app.include_router(stock_adjustments.router)  # Disabled - uses BatchInventoryStatus model
-# app.include_router(tax_entries.router)  # Disabled - imports crud
-# app.include_router(users.router)  # Disabled - uses Role model
-# app.include_router(database_tools.router)  # Temporarily disabled - causing import issues
-app.include_router(db_inspect.router)  # Simple database inspection
-app.include_router(migrations.router, prefix="/migrations")  # Database migrations
-app.include_router(organizations.router)  # Organizations management
-app.include_router(test_simple.router)  # Simple test endpoints
-app.include_router(products_simple.router)  # Simple products endpoints
-app.include_router(delivery_public.router)  # Public delivery endpoints
+app.include_router(db_inspect.router)
+app.include_router(migrations.router, prefix="/migrations")
+app.include_router(organizations.router)
+
+# Include v1 API routers
+app.include_router(customers_router)
 
 # Request timing middleware
 @app.middleware("http")
