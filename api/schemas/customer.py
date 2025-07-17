@@ -15,24 +15,24 @@ class CustomerBase(BaseModel):
     customer_name: str = Field(..., min_length=1, max_length=200)
     customer_code: Optional[str] = Field(None, max_length=50)
     contact_person: Optional[str] = Field(None, max_length=100)
-    phone: str = Field(..., regex=r"^[0-9]{10}$", description="10-digit mobile number")
-    alternate_phone: Optional[str] = Field(None, regex=r"^[0-9]{10}$")
-    email: Optional[str] = Field(None, regex=r"^[\w\.-]+@[\w\.-]+\.\w+$")
+    phone: str = Field(..., pattern=r"^[0-9]{10}$", description="10-digit mobile number")
+    alternate_phone: Optional[str] = Field(None, pattern=r"^[0-9]{10}$")
+    email: Optional[str] = Field(None, pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
     
     # Address fields
     address_line1: str = Field(..., min_length=1, max_length=200)
     address_line2: Optional[str] = Field(None, max_length=200)
     city: str = Field(..., min_length=1, max_length=100)
     state: str = Field(..., min_length=1, max_length=100)
-    pincode: str = Field(..., regex=r"^[0-9]{6}$", description="6-digit pincode")
+    pincode: str = Field(..., pattern=r"^[0-9]{6}$", description="6-digit pincode")
     
     # GST and Tax details
-    gstin: Optional[str] = Field(None, regex=r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
-    pan_number: Optional[str] = Field(None, regex=r"^[A-Z]{5}[0-9]{4}[A-Z]{1}$")
+    gstin: Optional[str] = Field(None, pattern=r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
+    pan_number: Optional[str] = Field(None, pattern=r"^[A-Z]{5}[0-9]{4}[A-Z]{1}$")
     drug_license_number: Optional[str] = Field(None, max_length=50)
     
     # Business details
-    customer_type: str = Field(..., regex=r"^(retail|wholesale|hospital|clinic|pharmacy)$")
+    customer_type: str = Field(..., pattern=r"^(retail|wholesale|hospital|clinic|pharmacy)$")
     credit_limit: Decimal = Field(default=Decimal("0.00"), ge=0)
     credit_days: int = Field(default=0, ge=0, le=365)
     discount_percent: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
@@ -65,16 +65,16 @@ class CustomerUpdate(BaseModel):
     """Schema for updating customer details"""
     customer_name: Optional[str] = Field(None, min_length=1, max_length=200)
     contact_person: Optional[str] = Field(None, max_length=100)
-    phone: Optional[str] = Field(None, regex=r"^[0-9]{10}$")
-    alternate_phone: Optional[str] = Field(None, regex=r"^[0-9]{10}$")
-    email: Optional[str] = Field(None, regex=r"^[\w\.-]+@[\w\.-]+\.\w+$")
+    phone: Optional[str] = Field(None, pattern=r"^[0-9]{10}$")
+    alternate_phone: Optional[str] = Field(None, pattern=r"^[0-9]{10}$")
+    email: Optional[str] = Field(None, pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
     
     # Address fields
     address_line1: Optional[str] = Field(None, min_length=1, max_length=200)
     address_line2: Optional[str] = Field(None, max_length=200)
     city: Optional[str] = Field(None, min_length=1, max_length=100)
     state: Optional[str] = Field(None, min_length=1, max_length=100)
-    pincode: Optional[str] = Field(None, regex=r"^[0-9]{6}$")
+    pincode: Optional[str] = Field(None, pattern=r"^[0-9]{6}$")
     
     # Business details
     credit_limit: Optional[Decimal] = Field(None, ge=0)
@@ -102,7 +102,7 @@ class CustomerResponse(CustomerBase):
     updated_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CustomerLedgerEntry(BaseModel):
@@ -116,7 +116,7 @@ class CustomerLedgerEntry(BaseModel):
     running_balance: Decimal
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CustomerLedgerResponse(BaseModel):
@@ -130,7 +130,7 @@ class CustomerLedgerResponse(BaseModel):
     entries: List[CustomerLedgerEntry]
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class OutstandingInvoice(BaseModel):
@@ -144,7 +144,7 @@ class OutstandingInvoice(BaseModel):
     days_overdue: int
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CustomerOutstandingResponse(BaseModel):
@@ -159,7 +159,7 @@ class CustomerOutstandingResponse(BaseModel):
     invoices: List[OutstandingInvoice]
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class PaymentRecord(BaseModel):
@@ -167,7 +167,7 @@ class PaymentRecord(BaseModel):
     customer_id: int
     payment_date: date = Field(default_factory=date.today)
     amount: Decimal = Field(..., gt=0)
-    payment_mode: str = Field(..., regex=r"^(cash|cheque|bank_transfer|upi|card)$")
+    payment_mode: str = Field(..., pattern=r"^(cash|cheque|bank_transfer|upi|card)$")
     reference_number: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = Field(None, max_length=500)
     
@@ -188,7 +188,7 @@ class PaymentResponse(BaseModel):
     created_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CustomerListResponse(BaseModel):
