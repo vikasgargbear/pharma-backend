@@ -50,7 +50,7 @@ class CustomerService:
             SELECT 
                 c.credit_limit,
                 c.credit_days,
-                COALESCE(SUM(o.total_amount - o.paid_amount), 0) as outstanding
+                COALESCE(SUM(o.final_amount - o.paid_amount), 0) as outstanding
             FROM customers c
             LEFT JOIN orders o ON c.customer_id = o.customer_id
                 AND o.order_status NOT IN ('cancelled', 'draft')
@@ -89,7 +89,7 @@ class CustomerService:
         business_result = db.execute(text("""
             SELECT 
                 COUNT(*) as total_orders,
-                COALESCE(SUM(total_amount), 0) as total_business,
+                COALESCE(SUM(final_amount), 0) as total_business,
                 MAX(order_date) as last_order_date
             FROM orders
             WHERE customer_id = :customer_id
@@ -100,11 +100,11 @@ class CustomerService:
         
         # Outstanding amount
         outstanding_result = db.execute(text("""
-            SELECT COALESCE(SUM(total_amount - paid_amount), 0) as outstanding
+            SELECT COALESCE(SUM(final_amount - paid_amount), 0) as outstanding
             FROM orders
             WHERE customer_id = :customer_id
                 AND order_status NOT IN ('cancelled', 'draft')
-                AND paid_amount < total_amount
+                AND paid_amount < final_amount
         """), {"customer_id": customer_id})
         
         outstanding = outstanding_result.scalar() or Decimal("0.00")
@@ -152,7 +152,7 @@ class CustomerService:
                 SELECT 
                     'invoice' as type,
                     order_date as date,
-                    total_amount as amount
+                    final_amount as amount
                 FROM orders
                 WHERE customer_id = :customer_id
                     AND order_date < :from_date
@@ -185,7 +185,7 @@ class CustomerService:
                     order_date as transaction_date,
                     order_number as reference_number,
                     'Sales Invoice' as description,
-                    total_amount as debit_amount,
+                    final_amount as debit_amount,
                     0 as credit_amount
                 FROM orders
                 WHERE customer_id = :customer_id
@@ -270,14 +270,14 @@ class CustomerService:
                 order_id,
                 order_number,
                 order_date,
-                total_amount as invoice_amount,
+                final_amount as invoice_amount,
                 paid_amount,
-                total_amount - paid_amount as outstanding_amount,
+                final_amount - paid_amount as outstanding_amount,
                 CURRENT_DATE - order_date as days_since_invoice
             FROM orders
             WHERE customer_id = :customer_id
                 AND order_status NOT IN ('cancelled', 'draft')
-                AND paid_amount < total_amount
+                AND paid_amount < final_amount
             ORDER BY order_date
         """), {"customer_id": customer_id})
         
@@ -354,11 +354,11 @@ class CustomerService:
         if not payment_data.allocate_to_invoices:
             # Get outstanding invoices in FIFO order
             outstanding = db.execute(text("""
-                SELECT order_id, total_amount - paid_amount as outstanding
+                SELECT order_id, final_amount - paid_amount as outstanding
                 FROM orders
                 WHERE customer_id = :customer_id
                     AND order_status NOT IN ('cancelled', 'draft')
-                    AND paid_amount < total_amount
+                    AND paid_amount < final_amount
                 ORDER BY order_date
             """), {"customer_id": payment_data.customer_id})
             
@@ -389,7 +389,7 @@ class CustomerService:
                 
                 # Get outstanding amount for this invoice
                 outstanding = db.execute(text("""
-                    SELECT total_amount - paid_amount as outstanding
+                    SELECT final_amount - paid_amount as outstanding
                     FROM orders
                     WHERE order_id = :order_id AND customer_id = :customer_id
                 """), {
