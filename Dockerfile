@@ -61,12 +61,8 @@ RUN mkdir -p logs uploads/customer_bills uploads/purchase_invoices data && \
 # Switch to non-root user
 USER pharmauser
 
-# Expose application port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')"
+# Railway will set the PORT dynamically
 
 # Start the application
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Using shell form to expand $PORT variable
+CMD uvicorn api.main_minimal:app --host 0.0.0.0 --port ${PORT:-8000}
