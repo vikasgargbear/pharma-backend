@@ -38,7 +38,7 @@ try:
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
         sales_returns, simple_delivery, stock_adjustments, tax_entries, users,
-        schema_fix
+        schema_fix, database_tools
     )
     # Temporarily disabled due to schema/model issues: challans
 except ImportError:
@@ -52,7 +52,7 @@ except ImportError:
         analytics, batches, compliance, customers, file_uploads,
         inventory, loyalty, orders, payments, products, purchases,
         sales_returns, simple_delivery, stock_adjustments, tax_entries, users,
-        schema_fix
+        schema_fix, database_tools
     )
     # Temporarily disabled due to schema/model issues: challans
 
@@ -207,6 +207,7 @@ app.include_router(stock_adjustments.router)  # Now enabled - model added
 app.include_router(tax_entries.router)
 app.include_router(users.router)
 app.include_router(schema_fix.router)  # Temporary schema fix router
+app.include_router(database_tools.router)  # Database management tools
 
 # Request timing middleware
 @app.middleware("http")
