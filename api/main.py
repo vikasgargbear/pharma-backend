@@ -197,22 +197,22 @@ async def rate_limiting_middleware(request: Request, call_next):
 
 # Include all routers for modular architecture
 # Note: Some routers are disabled because they reference models that don't exist in the database
-app.include_router(analytics.router)
-app.include_router(batches.router) 
+# app.include_router(analytics.router)  # Disabled - imports crud
+# app.include_router(batches.router)   # Disabled - imports crud
 # app.include_router(challans.router)  # Temporarily disabled due to schema issues
 # app.include_router(compliance.router)  # Disabled - uses AuditLog, License models
 # app.include_router(customers.router)  # Disabled - uses CustomerCreditNote model
 # app.include_router(file_uploads.router)  # Disabled - uses FileUpload model
 # app.include_router(inventory.router)  # Disabled - uses InventoryTransaction model
 # app.include_router(loyalty.router)  # Disabled - uses LoyaltyAccount model
-app.include_router(orders.router)
+# app.include_router(orders.router)  # Disabled - imports crud
 # app.include_router(payments.router)  # Disabled - uses BatchInventoryStatus model
 app.include_router(products.router)
 # app.include_router(purchases.router)  # Disabled - uses PurchaseItem model
 # app.include_router(sales_returns.router)  # Disabled - uses BatchInventoryStatus model
 app.include_router(simple_delivery.router)
 # app.include_router(stock_adjustments.router)  # Disabled - uses BatchInventoryStatus model
-app.include_router(tax_entries.router)
+# app.include_router(tax_entries.router)  # Disabled - imports crud
 # app.include_router(users.router)  # Disabled - uses Role model
 # app.include_router(database_tools.router)  # Temporarily disabled - causing import issues
 app.include_router(db_inspect.router)  # Simple database inspection
