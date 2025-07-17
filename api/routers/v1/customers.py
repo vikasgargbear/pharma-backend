@@ -11,7 +11,7 @@ from uuid import UUID
 import logging
 
 from ...database import get_db
-from ...schemas.customer import (
+from ...schemas_v2.customer import (
     CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse,
     CustomerLedgerResponse, CustomerOutstandingResponse,
     PaymentRecord, PaymentResponse

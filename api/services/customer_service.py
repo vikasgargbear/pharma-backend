@@ -11,7 +11,7 @@ from uuid import UUID
 import logging
 
 from ..models import Customer, Order, Payment
-from ..schemas.customer import (
+from ..schemas_v2.customer import (
     CustomerCreate, CustomerUpdate, CustomerResponse,
     CustomerLedgerEntry, CustomerLedgerResponse,
     OutstandingInvoice, CustomerOutstandingResponse,
