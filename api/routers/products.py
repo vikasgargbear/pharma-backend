@@ -7,17 +7,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from ..core.crud_base import create_crud
-from ..core.security import ResourceNotFoundError
+# from ..core.crud_base import create_crud
+# from ..core.security import ResourceNotFoundError
+from fastapi import HTTPException as ResourceNotFoundError
 from ..database import get_db
 from ..models import Product
-from ..schemas import ProductResponse, ProductCreate
+from api.schemas import ProductResponse, ProductCreate
 
 # Create router
 router = APIRouter(prefix="/products", tags=["products"])
 
 # Create CRUD instance - replaces 200+ lines of repetitive code!
-product_crud = create_crud(Product)
+# product_crud = create_crud(Product)
 
 @router.post("/", response_model=ProductResponse)
 def create_product(product: ProductCreate, db: Session = Depends(get_db)):
@@ -96,15 +97,25 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 @router.put("/{product_id}", response_model=ProductResponse) 
 def update_product(product_id: int, product_update: ProductCreate, db: Session = Depends(get_db)):
     """Update a product"""
-    db_product = product_crud.get(db=db, id=product_id)
+    # Simplified update without crud_base
+    db_product = db.query(Product).filter(Product.product_id == product_id).first()
     if not db_product:
-        raise ResourceNotFoundError("Product", product_id)
-    return product_crud.update(db=db, db_obj=db_product, obj_in=product_update)
+        raise ResourceNotFoundError(status_code=404, detail=f"Product {product_id} not found")
+    
+    for field, value in product_update.dict(exclude_unset=True).items():
+        setattr(db_product, field, value)
+    
+    db.commit()
+    db.refresh(db_product)
+    return db_product
 
 @router.delete("/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     """Delete a product"""
-    if not product_crud.exists(db=db, id=product_id):
-        raise ResourceNotFoundError("Product", product_id)
-    product_crud.remove(db=db, id=product_id)
+    db_product = db.query(Product).filter(Product.product_id == product_id).first()
+    if not db_product:
+        raise ResourceNotFoundError(status_code=404, detail=f"Product {product_id} not found")
+    
+    db.delete(db_product)
+    db.commit()
     return {"message": f"Product {product_id} deleted successfully"} 
