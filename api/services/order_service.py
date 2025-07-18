@@ -208,17 +208,17 @@ class OrderService:
                     db.execute(text("""
                         INSERT INTO inventory_movements (
                             product_id, batch_id, movement_type, movement_date,
-                            quantity, reference_type, reference_id,
+                            quantity_out, reference_type, reference_id,
                             created_at, updated_at
                         ) VALUES (
                             :product_id, :batch_id, 'sale', CURRENT_DATE,
-                            :quantity, 'order', :order_id,
+                            :quantity_out, 'order', :order_id,
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
                     """), {
                         "product_id": item['product_id'],
                         "batch_id": item['batch_id'],
-                        "quantity": -item['quantity'],
+                        "quantity_out": item['quantity'],
                         "order_id": order_id
                     })
                 else:
@@ -264,7 +264,7 @@ class OrderService:
                         """), {
                             "product_id": item['product_id'],
                             "batch_id": batch.batch_id,
-                            "quantity": -allocation,
+                            "quantity_out": allocation,
                             "order_id": order_id
                         })
                         
@@ -309,18 +309,18 @@ class OrderService:
         
         # Calculate return amount
         if return_request.return_type == "full":
-            return_amount = order.total_amount
+            return_amount = order.final_amount
             
             # Reverse all inventory allocations
             db.execute(text("""
                 INSERT INTO inventory_movements (
                     product_id, batch_id, movement_type, movement_date,
-                    quantity, reference_type, reference_id,
+                    quantity_in, reference_type, reference_id,
                     created_at, updated_at
                 )
                 SELECT 
                     product_id, batch_id, 'return', CURRENT_DATE,
-                    -quantity, 'return', :order_id,
+                    COALESCE(quantity_out, 0), 'return', :order_id,
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 FROM inventory_movements
                 WHERE reference_type = 'order' AND reference_id = :order_id
@@ -329,11 +329,11 @@ class OrderService:
             # Update batch quantities
             db.execute(text("""
                 UPDATE batches b
-                SET quantity_available = quantity_available + im.quantity,
-                    quantity_sold = quantity_sold - im.quantity,
+                SET quantity_available = quantity_available + im.quantity_out,
+                    quantity_sold = quantity_sold - im.quantity_out,
                     updated_at = CURRENT_TIMESTAMP
                 FROM (
-                    SELECT batch_id, SUM(-quantity) as quantity
+                    SELECT batch_id, SUM(COALESCE(quantity_out, 0)) as quantity_out
                     FROM inventory_movements
                     WHERE reference_type = 'order' AND reference_id = :order_id
                     GROUP BY batch_id

@@ -468,9 +468,9 @@ async def mark_delivered(
         # Release allocated inventory
         db.execute(text("""
             UPDATE batches b
-            SET quantity_sold = quantity_sold - im.quantity
+            SET quantity_sold = quantity_sold - im.quantity_out
             FROM (
-                SELECT batch_id, ABS(quantity) as quantity
+                SELECT batch_id, COALESCE(quantity_out, 0) as quantity_out
                 FROM inventory_movements
                 WHERE reference_type = 'order' 
                     AND reference_id = :order_id
