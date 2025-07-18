@@ -133,13 +133,17 @@ async def list_customers(
                 customer_name ILIKE :search OR 
                 customer_code ILIKE :search OR 
                 phone LIKE :search OR
-                gstin LIKE :search
+                gstin LIKE :search OR
+                area ILIKE :search OR
+                city ILIKE :search
             )"""
             count_query += """ AND (
                 customer_name ILIKE :search OR 
                 customer_code ILIKE :search OR 
                 phone LIKE :search OR
-                gstin LIKE :search
+                gstin LIKE :search OR
+                area ILIKE :search OR
+                city ILIKE :search
             )"""
             params["search"] = f"%{search}%"
         
