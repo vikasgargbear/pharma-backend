@@ -19,7 +19,7 @@ router = APIRouter(prefix="/products", tags=["products"])
 # Create CRUD instance - replaces 200+ lines of repetitive code!
 product_crud = create_crud(Product)
 
-@router.post("/", response_model=ProductResponse)
+@router.post("/")
 def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     """Create a new product"""
     try:
@@ -37,7 +37,22 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
         db.add(db_product)
         db.commit()
         db.refresh(db_product)
-        return db_product
+        
+        # Convert to dict for response
+        result = {
+            "product_id": db_product.product_id,
+            "product_code": db_product.product_code,
+            "product_name": db_product.product_name,
+            "org_id": str(db_product.org_id),
+            "mrp": float(db_product.mrp) if db_product.mrp else 0,
+            "sale_price": float(db_product.sale_price) if db_product.sale_price else 0,
+            "gst_percent": float(db_product.gst_percent) if db_product.gst_percent else 12,
+            "cgst_percent": float(db_product.cgst_percent) if db_product.cgst_percent else 6,
+            "sgst_percent": float(db_product.sgst_percent) if db_product.sgst_percent else 6,
+            "igst_percent": float(db_product.igst_percent) if db_product.igst_percent else 12,
+        }
+        print(f"Product created successfully: {result}")
+        return result
     except Exception as e:
         db.rollback()
         print(f"Error creating product: {str(e)}")
