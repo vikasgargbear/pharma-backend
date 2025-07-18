@@ -43,27 +43,52 @@ async def create_customer(
         # Generate customer code
         customer_code = CustomerService.generate_customer_code(db, customer.customer_name)
         
-        # Create customer
-        result = db.execute(text("""
-            INSERT INTO customers (
-                org_id, customer_code, customer_name, contact_person,
-                phone, alternate_phone, email,
-                address_line1, address_line2, area, city, state, pincode,
-                gstin, pan_number, drug_license_number,
-                customer_type, credit_limit, credit_days, discount_percent,
-                is_active, notes, created_at, updated_at
-            ) VALUES (
-                :org_id, :customer_code, :customer_name, :contact_person,
-                :phone, :alternate_phone, :email,
-                :address_line1, :address_line2, :area, :city, :state, :pincode,
-                :gstin, :pan_number, :drug_license_number,
-                :customer_type, :credit_limit, :credit_days, :discount_percent,
-                :is_active, :notes, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-            ) RETURNING customer_id
-        """), {
-            **customer.dict(),
-            "customer_code": customer_code
-        })
+        # Create customer - check if area column exists
+        customer_data = customer.dict()
+        customer_data["customer_code"] = customer_code
+        
+        # For backward compatibility, check if we need to include area
+        try:
+            # Try with area field first
+            result = db.execute(text("""
+                INSERT INTO customers (
+                    org_id, customer_code, customer_name, contact_person,
+                    phone, alternate_phone, email,
+                    address_line1, address_line2, area, city, state, pincode,
+                    gstin, pan_number, drug_license_number,
+                    customer_type, credit_limit, credit_days, discount_percent,
+                    is_active, notes, created_at, updated_at
+                ) VALUES (
+                    :org_id, :customer_code, :customer_name, :contact_person,
+                    :phone, :alternate_phone, :email,
+                    :address_line1, :address_line2, :area, :city, :state, :pincode,
+                    :gstin, :pan_number, :drug_license_number,
+                    :customer_type, :credit_limit, :credit_days, :discount_percent,
+                    :is_active, :notes, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                ) RETURNING customer_id
+            """), customer_data)
+        except Exception as e:
+            if "column \"area\" of relation \"customers\" does not exist" in str(e):
+                # Fallback to without area field
+                result = db.execute(text("""
+                    INSERT INTO customers (
+                        org_id, customer_code, customer_name, contact_person,
+                        phone, alternate_phone, email,
+                        address_line1, address_line2, city, state, pincode,
+                        gstin, pan_number, drug_license_number,
+                        customer_type, credit_limit, credit_days, discount_percent,
+                        is_active, notes, created_at, updated_at
+                    ) VALUES (
+                        :org_id, :customer_code, :customer_name, :contact_person,
+                        :phone, :alternate_phone, :email,
+                        :address_line1, :address_line2, :city, :state, :pincode,
+                        :gstin, :pan_number, :drug_license_number,
+                        :customer_type, :credit_limit, :credit_days, :discount_percent,
+                        :is_active, :notes, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    ) RETURNING customer_id
+                """), customer_data)
+            else:
+                raise
         
         customer_id = result.scalar()
         db.commit()
