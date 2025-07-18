@@ -24,6 +24,12 @@ from ..migrations.add_inventory_tables import (
 from ..migrations.create_billing_tables import (
     create_billing_tables
 )
+from ..migrations.fix_missing_invoices_table import (
+    create_invoices_table_only
+)
+from ..migrations.add_missing_invoice_columns import (
+    add_missing_invoice_columns
+)
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +221,44 @@ async def run_billing_migration(db: Session = Depends(get_db)):
         
     except Exception as e:
         logger.error(f"Billing migration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/add-missing-invoice-columns")
+async def add_invoice_columns(db: Session = Depends(get_db)):
+    """Add missing due_date and invoice_status columns to invoices table"""
+    try:
+        logger.info("Adding missing invoice columns...")
+        result = add_missing_invoice_columns(db)
+        
+        if result["success"]:
+            logger.info(f"Column addition successful: {result['message']}")
+        else:
+            logger.error(f"Column addition failed: {result['message']}")
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error adding invoice columns: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/fix-missing-invoices-table")
+async def fix_missing_invoices_table(db: Session = Depends(get_db)):
+    """Create only the invoices table when other billing tables already exist"""
+    try:
+        logger.info("Creating missing invoices table...")
+        result = create_invoices_table_only(db)
+        
+        if result["success"]:
+            logger.info(f"Invoices table creation successful: {result['message']}")
+        else:
+            logger.error(f"Invoices table creation failed: {result['message']}")
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error creating invoices table: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
