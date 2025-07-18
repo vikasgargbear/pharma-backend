@@ -63,10 +63,17 @@ async def create_order(
                 detail=f"Inventory validation failed: {'; '.join(failed_items)}"
             )
         
-        # Calculate totals
-        customer_discount = db.execute(text("""
-            SELECT discount_percent FROM customers WHERE customer_id = :id
-        """), {"id": order.customer_id}).scalar() or Decimal("0")
+        # Get customer details
+        customer = db.execute(text("""
+            SELECT customer_name, phone, discount_percent 
+            FROM customers 
+            WHERE customer_id = :id
+        """), {"id": order.customer_id}).fetchone()
+        
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        
+        customer_discount = customer.discount_percent or Decimal("0")
         
         totals = OrderService.calculate_order_totals(
             db, items_dict, customer_discount
@@ -88,27 +95,39 @@ async def create_order(
         order_data.update({
             "order_number": order_number,
             "order_status": "pending",
+            "customer_name": customer.customer_name,
+            "customer_phone": customer.phone,
             "subtotal_amount": totals["subtotal"],
             "discount_amount": totals["discount"],
             "tax_amount": totals["tax"],
+            "round_off_amount": Decimal("0"),
             "final_amount": totals["total"],
             "paid_amount": Decimal("0"),
+            "balance_amount": totals["total"],
+            "payment_mode": "credit",
+            "payment_status": "pending",
             "created_at": datetime.now(),
             "updated_at": datetime.now()
         })
         
+        # Ensure payment_terms has a value (it might be None even with schema default)
+        if not order_data.get("payment_terms"):
+            order_data["payment_terms"] = "credit"
+        
         # Insert order
         result = db.execute(text("""
             INSERT INTO orders (
-                org_id, order_number, customer_id, order_date,
-                delivery_date, order_type, payment_terms, order_status,
-                subtotal_amount, discount_amount, tax_amount, final_amount,
-                paid_amount, notes, created_at, updated_at
+                org_id, order_number, customer_id, customer_name, customer_phone,
+                order_date, delivery_date, order_type, payment_terms, order_status,
+                subtotal_amount, discount_amount, tax_amount, round_off_amount, final_amount,
+                paid_amount, balance_amount, payment_mode, payment_status,
+                notes, created_at, updated_at
             ) VALUES (
-                :org_id, :order_number, :customer_id, :order_date,
-                :delivery_date, :order_type, :payment_terms, :order_status,
-                :subtotal_amount, :discount_amount, :tax_amount, :final_amount,
-                :paid_amount, :notes, :created_at, :updated_at
+                :org_id, :order_number, :customer_id, :customer_name, :customer_phone,
+                :order_date, :delivery_date, :order_type, :payment_terms, :order_status,
+                :subtotal_amount, :discount_amount, :tax_amount, :round_off_amount, :final_amount,
+                :paid_amount, :balance_amount, :payment_mode, :payment_status,
+                :notes, :created_at, :updated_at
             ) RETURNING order_id
         """), order_data)
         
