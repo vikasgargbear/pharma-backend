@@ -11,7 +11,7 @@ from ..core.crud_base import create_crud
 from ..core.security import ResourceNotFoundError
 from ..database import get_db
 from ..models import Product
-from ..base_schemas import ProductResponse, ProductCreate
+from ..base_schemas import ProductCreate
 
 # Create router
 router = APIRouter(prefix="/products", tags=["products"])
@@ -28,6 +28,31 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
         if not product_dict.get('org_id'):
             product_dict['org_id'] = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
         
+        # Check if product already exists
+        existing = db.execute(text("""
+            SELECT product_id, product_code, product_name, mrp, sale_price, gst_percent
+            FROM products 
+            WHERE org_id = :org_id AND product_code = :product_code
+        """), {
+            "org_id": product_dict['org_id'],
+            "product_code": product_dict['product_code']
+        }).fetchone()
+        
+        if existing:
+            # Return existing product
+            result = {
+                "product_id": existing.product_id,
+                "product_code": existing.product_code,
+                "product_name": existing.product_name,
+                "org_id": product_dict['org_id'],
+                "mrp": float(existing.mrp or 0),
+                "sale_price": float(existing.sale_price or 0),
+                "gst_percent": float(existing.gst_percent or 12),
+                "message": "Product already exists"
+            }
+            print(f"Product already exists: {result}")
+            return result
+        
         # Log the data being created
         import json
         print(f"Creating product with data: {json.dumps({k: str(v) for k, v in product_dict.items()}, indent=2)}")
@@ -38,18 +63,22 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_product)
         
-        # Convert to dict for response
+        # Convert to dict for response - ensure all fields are JSON serializable
         result = {
             "product_id": db_product.product_id,
             "product_code": db_product.product_code,
             "product_name": db_product.product_name,
             "org_id": str(db_product.org_id),
-            "mrp": float(db_product.mrp) if db_product.mrp else 0,
-            "sale_price": float(db_product.sale_price) if db_product.sale_price else 0,
-            "gst_percent": float(db_product.gst_percent) if db_product.gst_percent else 12,
-            "cgst_percent": float(db_product.cgst_percent) if db_product.cgst_percent else 6,
-            "sgst_percent": float(db_product.sgst_percent) if db_product.sgst_percent else 6,
-            "igst_percent": float(db_product.igst_percent) if db_product.igst_percent else 12,
+            "mrp": float(db_product.mrp or 0),
+            "sale_price": float(db_product.sale_price or 0),
+            "gst_percent": float(db_product.gst_percent or 12),
+            "cgst_percent": float(db_product.cgst_percent or 6),
+            "sgst_percent": float(db_product.sgst_percent or 6),
+            "igst_percent": float(db_product.igst_percent or 12),
+            "hsn_code": db_product.hsn_code,
+            "manufacturer": db_product.manufacturer,
+            "category": db_product.category,
+            "is_active": db_product.is_active
         }
         print(f"Product created successfully: {result}")
         return result
@@ -120,7 +149,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get product: {str(e)}")
 
-@router.put("/{product_id}", response_model=ProductResponse) 
+@router.put("/{product_id}") 
 def update_product(product_id: int, product_update: ProductCreate, db: Session = Depends(get_db)):
     """Update a product"""
     db_product = product_crud.get(db=db, id=product_id)
