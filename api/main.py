@@ -174,7 +174,7 @@ async def rate_limiting_middleware(request: Request, call_next):
     return response
 
 # Include working routers
-app.include_router(products.router)
+app.include_router(products.router, prefix="/api/v1")
 app.include_router(simple_delivery.router)
 app.include_router(db_inspect.router)
 app.include_router(migrations.router, prefix="/migrations")

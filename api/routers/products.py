@@ -22,17 +22,29 @@ product_crud = create_crud(Product)
 @router.post("/", response_model=ProductResponse)
 def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     """Create a new product"""
-    # Ensure org_id is set
-    product_dict = product.dict()
-    if not product_dict.get('org_id'):
-        product_dict['org_id'] = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
-    
-    # Create product with the dict
-    db_product = Product(**product_dict)
-    db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
-    return db_product
+    try:
+        # Ensure org_id is set
+        product_dict = product.dict()
+        if not product_dict.get('org_id'):
+            product_dict['org_id'] = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
+        
+        # Log the data being created
+        import json
+        print(f"Creating product with data: {json.dumps({k: str(v) for k, v in product_dict.items()}, indent=2)}")
+        
+        # Create product with the dict
+        db_product = Product(**product_dict)
+        db.add(db_product)
+        db.commit()
+        db.refresh(db_product)
+        return db_product
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating product: {str(e)}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create product: {str(e)}")
 
 @router.get("/")
 def get_products(

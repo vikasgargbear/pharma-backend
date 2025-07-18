@@ -316,6 +316,72 @@ async def get_order(
         raise HTTPException(status_code=500, detail=f"Failed to get order: {str(e)}")
 
 
+@router.put("/{order_id}")
+async def update_order(
+    order_id: int,
+    order_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Update order details"""
+    try:
+        # Check if order exists
+        existing = db.execute(text("""
+            SELECT order_id FROM orders 
+            WHERE order_id = :id AND org_id = :org_id
+        """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).scalar()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+        
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        params = {"order_id": order_id, "org_id": DEFAULT_ORG_ID}
+        
+        # List of allowed update fields
+        allowed_fields = [
+            "customer_id", "order_date", "delivery_date", "status", 
+            "payment_status", "payment_mode", "total_amount", "discount", 
+            "final_amount", "notes"
+        ]
+        
+        for field, value in order_data.items():
+            if field in allowed_fields:
+                # Map frontend field names to database column names
+                db_field = field
+                if field == "status":
+                    db_field = "order_status"
+                
+                update_fields.append(f"{db_field} = :{field}")
+                params[field] = value
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+        
+        # Add updated_at timestamp
+        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+        
+        # Execute update
+        update_query = f"""
+            UPDATE orders 
+            SET {', '.join(update_fields)}
+            WHERE order_id = :order_id AND org_id = :org_id
+        """
+        
+        db.execute(text(update_query), params)
+        db.commit()
+        
+        # Return updated order
+        return await get_order(order_id, db)
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating order: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update order: {str(e)}")
+
+
 @router.put("/{order_id}/confirm")
 async def confirm_order(
     order_id: int,
