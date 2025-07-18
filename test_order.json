@@ -1,0 +1,31 @@
+{
+  "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
+  "customer_id": 2,
+  "order_type": "sales",
+  "delivery_date": "2025-07-20",
+  "payment_mode": "credit",
+  "notes": "Test order for invoice generation",
+  "billing_name": "Apollo Pharmacy - MG Road",
+  "billing_address": "123 MG Road, Bangalore",
+  "billing_phone": "9876543210",
+  "shipping_name": "Apollo Pharmacy - MG Road",
+  "shipping_address": "123 MG Road, Bangalore",
+  "items": [
+    {
+      "product_id": 14,
+      "quantity": 50,
+      "unit_price": 25.50,
+      "discount_percent": 5,
+      "tax_percent": 12,
+      "tax_amount": 145.35
+    },
+    {
+      "product_id": 15,
+      "quantity": 100,
+      "unit_price": 99.99,
+      "discount_percent": 10,
+      "tax_percent": 12,
+      "tax_amount": 1079.89
+    }
+  ]
+}

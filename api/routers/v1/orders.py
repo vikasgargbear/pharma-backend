@@ -92,7 +92,7 @@ async def create_order(
             "subtotal_amount": totals["subtotal"],
             "discount_amount": totals["discount"],
             "tax_amount": totals["tax"],
-            "total_amount": totals["total"],
+            "final_amount": totals["total"],
             "paid_amount": Decimal("0"),
             "created_at": datetime.now(),
             "updated_at": datetime.now()
@@ -103,12 +103,12 @@ async def create_order(
             INSERT INTO orders (
                 org_id, order_number, customer_id, order_date,
                 delivery_date, order_type, payment_terms, order_status,
-                subtotal_amount, discount_amount, tax_amount, total_amount,
+                subtotal_amount, discount_amount, tax_amount, final_amount,
                 paid_amount, notes, created_at, updated_at
             ) VALUES (
                 :org_id, :order_number, :customer_id, :order_date,
                 :delivery_date, :order_type, :payment_terms, :order_status,
-                :subtotal_amount, :discount_amount, :tax_amount, :total_amount,
+                :subtotal_amount, :discount_amount, :tax_amount, :final_amount,
                 :paid_amount, :notes, :created_at, :updated_at
             ) RETURNING order_id
         """), order_data)

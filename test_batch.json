@@ -1,0 +1,12 @@
+{
+  "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
+  "product_id": 15,
+  "batch_number": "AP202507",
+  "quantity_received": 500,
+  "quantity_available": 500,
+  "cost_price": 75.00,
+  "mrp": 99.99,
+  "expiry_date": "2027-07-30",
+  "manufacturing_date": "2025-07-01",
+  "location_code": "A-01-02"
+}

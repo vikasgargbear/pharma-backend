@@ -22,6 +22,10 @@ from ..migrations.add_inventory_tables import (
     add_inventory_enterprise_tables,
     get_existing_tables
 )
+from ..migrations.create_billing_tables import (
+    create_billing_tables,
+    drop_billing_tables
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +198,60 @@ async def check_inventory_tables(db: Session = Depends(get_db)):
         
     except Exception as e:
         logger.error(f"Error checking tables: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/create-billing-tables")
+async def run_billing_migration(db: Session = Depends(get_db)):
+    """Create billing tables for invoice generation and payments"""
+    try:
+        logger.info("Starting billing tables migration...")
+        result = create_billing_tables(db)
+        
+        if result["success"]:
+            logger.info(f"Billing migration successful: {result['message']}")
+        else:
+            logger.error(f"Billing migration failed: {result['message']}")
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Billing migration error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/check-billing-tables")
+async def check_billing_tables(db: Session = Depends(get_db)):
+    """Check if billing tables exist"""
+    try:
+        from sqlalchemy import text
+        
+        tables = get_existing_tables(db)
+        
+        required_tables = ["invoices", "invoice_items", "invoice_payments"]
+        existing = [t for t in required_tables if t in tables]
+        missing = [t for t in required_tables if t not in tables]
+        
+        # Check counts
+        invoice_count = 0
+        payment_count = 0
+        
+        if "invoices" in tables:
+            invoice_count = db.execute(text("SELECT COUNT(*) FROM invoices")).scalar()
+        
+        if "invoice_payments" in tables:
+            payment_count = db.execute(text("SELECT COUNT(*) FROM invoice_payments")).scalar()
+        
+        return {
+            "billing_ready": len(missing) == 0,
+            "existing_tables": existing,
+            "missing_tables": missing,
+            "invoice_count": invoice_count,
+            "payment_count": payment_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking billing tables: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
