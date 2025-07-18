@@ -163,13 +163,7 @@ async def create_order(
         db.commit()
         
         # Return created order
-        try:
-            return await get_order(order_id, db)
-        except Exception as e:
-            # If get_order fails, at least return the order_id
-            # This prevents rollback of the successfully created order
-            logger.warning(f"Order {order_id} created but retrieval failed: {str(e)}")
-            return {"order_id": order_id, "message": "Order created successfully", "order_number": order_number}
+        return await get_order(order_id, db)
         
     except HTTPException:
         db.rollback()
@@ -306,7 +300,11 @@ async def get_order(
         order_dict["items"] = [dict(item._mapping) for item in items_result]
         # Map final_amount to total_amount for schema compatibility
         order_dict["total_amount"] = order_dict.get("final_amount", 0)
-        order_dict["balance_amount"] = order_dict["total_amount"] - order_dict.get("paid_amount", 0)
+        # balance_amount is already in the database, no need to recalculate
+        
+        # Add missing timestamp fields that might not be in the database
+        order_dict["confirmed_at"] = order_dict.get("confirmed_at", None)
+        order_dict["delivered_at"] = order_dict.get("delivered_at", None)
         
         return OrderResponse(**order_dict)
         
