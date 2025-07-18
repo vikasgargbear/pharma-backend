@@ -285,7 +285,9 @@ async def get_order(
         """), {"order_id": order_id})
         
         order_dict["items"] = [dict(item._mapping) for item in items_result]
-        order_dict["balance_amount"] = order_dict["total_amount"] - order_dict["paid_amount"]
+        # Map final_amount to total_amount for schema compatibility
+        order_dict["total_amount"] = order_dict.get("final_amount", 0)
+        order_dict["balance_amount"] = order_dict["total_amount"] - order_dict.get("paid_amount", 0)
         
         return OrderResponse(**order_dict)
         
