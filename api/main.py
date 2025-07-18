@@ -39,7 +39,7 @@ from .routers import (
 )
 
 # Import v1 routers
-from .routers.v1 import customers_router, orders_router, inventory_router, billing_router
+from .routers.v1 import customers_router, orders_router, inventory_router, billing_router, payments_router
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -187,6 +187,7 @@ app.include_router(customers_router)
 app.include_router(orders_router)
 app.include_router(inventory_router)
 app.include_router(billing_router)
+app.include_router(payments_router)
 
 # Request timing middleware
 @app.middleware("http")

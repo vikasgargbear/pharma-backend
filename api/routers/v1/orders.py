@@ -17,6 +17,7 @@ from ...schemas_v2.order import (
 )
 from ...services.order_service import OrderService
 from ...services.customer_service import CustomerService
+from ...services.invoice_service import InvoiceService
 
 logger = logging.getLogger(__name__)
 
@@ -380,46 +381,17 @@ async def generate_invoice(
                 detail=f"Cannot generate invoice. Order status: {order.order_status}"
             )
         
-        # Generate invoice number
-        invoice_number = invoice_request.invoice_number or OrderService.generate_invoice_number(db)
-        
-        # Create invoice record
-        result = db.execute(text("""
-            INSERT INTO invoices (
-                order_id, invoice_number, invoice_date,
-                created_at, updated_at
-            ) VALUES (
-                :order_id, :invoice_number, :invoice_date,
-                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-            ) RETURNING invoice_id
-        """), {
-            "order_id": order_id,
-            "invoice_number": invoice_number,
-            "invoice_date": invoice_request.invoice_date
-        })
-        
-        invoice_id = result.scalar()
-        
-        # Update order status to invoiced
-        db.execute(text("""
-            UPDATE orders
-            SET order_status = 'invoiced',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE order_id = :id AND org_id = :org_id
-        """), {"id": order_id, "org_id": DEFAULT_ORG_ID})
+        # Generate comprehensive invoice
+        invoice_data = InvoiceService.generate_invoice_for_order(
+            db, 
+            order_id, 
+            invoice_request.invoice_date,
+            DEFAULT_ORG_ID
+        )
         
         db.commit()
         
-        # Get invoice details
-        invoice = db.execute(text("""
-            SELECT i.*, o.order_number, o.subtotal_amount, 
-                   o.tax_amount, o.final_amount as total_amount
-            FROM invoices i
-            JOIN orders o ON i.order_id = o.order_id
-            WHERE i.invoice_id = :id
-        """), {"id": invoice_id}).fetchone()
-        
-        return InvoiceResponse(**dict(invoice._mapping))
+        return InvoiceResponse(**invoice_data)
         
     except HTTPException:
         db.rollback()
