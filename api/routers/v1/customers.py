@@ -48,14 +48,14 @@ async def create_customer(
             INSERT INTO customers (
                 org_id, customer_code, customer_name, contact_person,
                 phone, alternate_phone, email,
-                address_line1, address_line2, city, state, pincode,
+                address_line1, address_line2, area, city, state, pincode,
                 gstin, pan_number, drug_license_number,
                 customer_type, credit_limit, credit_days, discount_percent,
                 is_active, notes, created_at, updated_at
             ) VALUES (
                 :org_id, :customer_code, :customer_name, :contact_person,
                 :phone, :alternate_phone, :email,
-                :address_line1, :address_line2, :city, :state, :pincode,
+                :address_line1, :address_line2, :area, :city, :state, :pincode,
                 :gstin, :pan_number, :drug_license_number,
                 :customer_type, :credit_limit, :credit_days, :discount_percent,
                 :is_active, :notes, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP

@@ -20,8 +20,9 @@ class CustomerBase(BaseModel):
     email: Optional[str] = Field(None, pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
     
     # Address fields
-    address_line1: str = Field(..., min_length=1, max_length=200)
-    address_line2: Optional[str] = Field(None, max_length=200)
+    address_line1: str = Field(..., min_length=1, max_length=200, description="Building/House number and street")
+    address_line2: Optional[str] = Field(None, max_length=200, description="Additional address details")
+    area: str = Field(..., min_length=1, max_length=100, description="Area/Locality name")
     city: str = Field(..., min_length=1, max_length=100)
     state: str = Field(..., min_length=1, max_length=100)
     pincode: str = Field(..., pattern=r"^[0-9]{6}$", description="6-digit pincode")
@@ -70,8 +71,9 @@ class CustomerUpdate(BaseModel):
     email: Optional[str] = Field(None, pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
     
     # Address fields
-    address_line1: Optional[str] = Field(None, min_length=1, max_length=200)
-    address_line2: Optional[str] = Field(None, max_length=200)
+    address_line1: Optional[str] = Field(None, min_length=1, max_length=200, description="Building/House number and street")
+    address_line2: Optional[str] = Field(None, max_length=200, description="Additional address details")
+    area: Optional[str] = Field(None, max_length=100, description="Area/Locality name")
     city: Optional[str] = Field(None, min_length=1, max_length=100)
     state: Optional[str] = Field(None, min_length=1, max_length=100)
     pincode: Optional[str] = Field(None, pattern=r"^[0-9]{6}$")
