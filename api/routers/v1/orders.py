@@ -144,7 +144,13 @@ async def create_order(
         db.commit()
         
         # Return created order
-        return await get_order(order_id, db)
+        try:
+            return await get_order(order_id, db)
+        except Exception as e:
+            # If get_order fails, at least return the order_id
+            # This prevents rollback of the successfully created order
+            logger.warning(f"Order {order_id} created but retrieval failed: {str(e)}")
+            return {"order_id": order_id, "message": "Order created successfully", "order_number": order_number}
         
     except HTTPException:
         db.rollback()
