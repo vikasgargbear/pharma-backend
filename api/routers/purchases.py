@@ -6,7 +6,7 @@ Supabase (PostgreSQL) compatible
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import os
 import tempfile
 import logging
@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from datetime import datetime
 
 from ..database import get_db
-from .. import models, schemas, crud
+from .. import models, schemas
 from ..core.crud_base import create_crud
 from ..core.security import handle_database_error
 from ..dependencies import get_current_user
@@ -23,7 +23,6 @@ from ..dependencies import get_current_user
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from bill_parser.parsers.generic import GenericParser
-from bill_parser.models import Invoice as BillParserInvoice
 
 # Create router
 router = APIRouter(prefix="/purchases", tags=["purchases"])

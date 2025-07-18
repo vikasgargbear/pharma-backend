@@ -2,12 +2,11 @@
 Customer management endpoints for enterprise pharma system
 Implements GST-compliant customer management with credit tracking
 """
-from typing import Optional, List
+from typing import Optional
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from uuid import UUID
 import logging
 
 from ...database import get_db

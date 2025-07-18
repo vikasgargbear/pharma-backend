@@ -2,19 +2,18 @@
 Order management endpoints for enterprise pharma system
 Handles complete order lifecycle from creation to delivery
 """
-from typing import Optional, List
+from typing import Optional
 from datetime import date, datetime
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from uuid import UUID
 import logging
 
 from ...database import get_db
 from ...schemas_v2.order import (
-    OrderCreate, OrderUpdate, OrderResponse, OrderListResponse,
-    InvoiceRequest, InvoiceResponse, DeliveryUpdate, ReturnRequest
+    OrderCreate, OrderResponse, OrderListResponse, InvoiceRequest,
+    InvoiceResponse, DeliveryUpdate, ReturnRequest
 )
 from ...services.order_service import OrderService
 from ...services.customer_service import CustomerService

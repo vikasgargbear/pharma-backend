@@ -7,11 +7,11 @@ Supabase (PostgreSQL) compatible
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from datetime import date, datetime, timedelta
-from sqlalchemy import and_, or_
+from datetime import date, timedelta
+from sqlalchemy import and_
 
 from ..database import get_db
-from .. import models, schemas, crud
+from .. import models, schemas
 from ..core.crud_base import create_crud
 from ..core.security import handle_database_error
 

@@ -9,18 +9,18 @@ from sqlalchemy import text
 from datetime import date
 from uuid import UUID
 
-from ...database import get_db
-from ...schemas_v2.billing import (
+from ..database import get_db
+from ..schemas import (
     InvoiceCreate, InvoiceResponse,
     PaymentCreate, PaymentResponse,
     GSTR1Summary, InvoiceSummary
 )
-from ...services.billing_service import BillingService
+from ..services.billing_service import BillingService
 import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/billing", tags=["Billing & GST"])
+router = APIRouter(prefix="/api/v1/billing", tags=["Billing & GST"])
 
 # Default organization ID (should come from auth in production)
 DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
@@ -41,7 +41,7 @@ async def generate_invoice(
     - Generates unique invoice number
     """
     try:
-        logger.info(f"Generating invoice for order {invoice_data.order_id}")
+        logger.info(f"Generating invoice for order {invoice_data.order_id} with org_id {org_id}")
         invoice = BillingService.create_invoice_from_order(db, invoice_data, org_id)
         logger.info(f"Generated invoice {invoice.invoice_number}")
         return invoice
@@ -49,7 +49,7 @@ async def generate_invoice(
         logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error generating invoice: {str(e)}")
+        logger.error(f"Error generating invoice: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate invoice")
 
 

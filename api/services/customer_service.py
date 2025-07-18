@@ -2,20 +2,17 @@
 Customer service layer for business logic
 Handles GST validation, credit management, and ledger calculations
 """
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from sqlalchemy import text, and_, or_, func
-from uuid import UUID
+from sqlalchemy import text
 import logging
 
-from ..models import Customer, Order, Payment
 from ..schemas_v2.customer import (
-    CustomerCreate, CustomerUpdate, CustomerResponse,
-    CustomerLedgerEntry, CustomerLedgerResponse,
-    OutstandingInvoice, CustomerOutstandingResponse,
-    PaymentRecord, PaymentResponse
+    CustomerLedgerEntry, CustomerLedgerResponse, OutstandingInvoice,
+    CustomerOutstandingResponse, PaymentRecord,
+    PaymentResponse
 )
 
 logger = logging.getLogger(__name__)

@@ -5,17 +5,15 @@ Real-time dashboards and reporting capabilities
 Supabase (PostgreSQL) compatible
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional, Dict, Any
+from typing import Optional
 from datetime import date, datetime, timedelta
-from sqlalchemy import and_, or_, func, text
+from sqlalchemy import func
 from collections import defaultdict
-import json
 
 from ..database import get_db
-from .. import models, schemas, crud
-from ..core.crud_base import create_crud
+from .. import models
 from ..core.security import handle_database_error
 
 # Create router

@@ -2,19 +2,19 @@
 Billing service layer for invoice generation and GST calculations
 Handles invoice creation, payment recording, and GST reports
 """
-from typing import Optional, List, Dict, Any
-from datetime import datetime, date, timedelta
+from typing import Dict
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy.orm import Session
-from sqlalchemy import text, and_, or_, func
+from sqlalchemy import text
 from uuid import UUID
 import logging
 
 from ..schemas_v2.billing import (
     InvoiceCreate, InvoiceResponse, InvoiceItemBase,
     PaymentCreate, PaymentResponse,
-    GSTType, InvoiceStatus, PaymentMode,
-    GSTR1Summary, GSTR3BSummary, InvoiceSummary
+    GSTType, InvoiceStatus, GSTR1Summary,
+    InvoiceSummary
 )
 
 logger = logging.getLogger(__name__)

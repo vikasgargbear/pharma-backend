@@ -7,12 +7,10 @@ referenced from various locations (core.security, auth, etc.)
 
 All routers now import authentication dependencies from this single location.
 """
-from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
-from datetime import datetime
 
 from .database import get_db
 from .core.config import settings

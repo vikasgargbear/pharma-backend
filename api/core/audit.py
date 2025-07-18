@@ -4,9 +4,8 @@ Audit logging system for tracking user actions and system events
 import json
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 from fastapi import Request
-from sqlalchemy.orm import Session
 
 # Configure audit logger
 audit_logger = logging.getLogger("audit")

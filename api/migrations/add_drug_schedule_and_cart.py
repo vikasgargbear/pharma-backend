@@ -1,15 +1,12 @@
 """
 Migration script to add drug schedule fields to Product model and create Cart models.
 """
-from sqlalchemy import create_engine, Column, String, Boolean, Integer, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
 import os
 import sys
-from datetime import datetime
 
 # Add parent directory to path to import from api
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database import SQLALCHEMY_DATABASE_URL, engine
+from database import engine
 
 def run_migration():
     """

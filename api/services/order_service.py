@@ -2,19 +2,17 @@
 Order service layer for business logic
 Handles order processing, inventory validation, and invoice generation
 """
-from typing import Optional, List, Dict, Any
-from datetime import datetime, date, timedelta
+from typing import List, Dict, Any
+from datetime import date, timedelta
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from sqlalchemy import text, and_, or_, func
+from sqlalchemy import text
 from uuid import UUID
 import logging
 
 from ..schemas_v2.order import (
-    OrderCreate, OrderUpdate, OrderResponse, OrderItemResponse,
-    InvoiceRequest, InvoiceResponse, DeliveryUpdate, ReturnRequest
+    ReturnRequest
 )
-from .customer_service import CustomerService
 
 logger = logging.getLogger(__name__)
 

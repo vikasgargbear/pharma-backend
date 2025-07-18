@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
-import uuid
 
 # Default org_id for now (from existing organization)
 DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"

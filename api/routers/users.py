@@ -9,12 +9,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
-import hashlib
 from jose import jwt
 from passlib.context import CryptContext
 
 from ..database import get_db
-from .. import models, schemas, crud
+from .. import models, schemas
 from ..core.crud_base import create_crud
 from ..core.security import handle_database_error
 from ..core.config import settings

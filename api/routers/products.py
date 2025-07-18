@@ -2,7 +2,7 @@
 Products API Router - Demonstrates the new modular architecture
 Reduces from 200+ lines to ~80 lines using generic CRUD
 """
-from typing import List, Optional
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text

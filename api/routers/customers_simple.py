@@ -1,11 +1,10 @@
 """
 Simplified customer endpoints that work with existing database schema
 """
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from decimal import Decimal
 import logging
 
 from ..database import get_db

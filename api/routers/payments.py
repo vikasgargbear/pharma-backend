@@ -3,13 +3,12 @@ Payments Router - All payment-related endpoints
 Migrated from main.py for better modularity and maintainability
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional
-from datetime import datetime, timedelta
+from typing import List
 
 from ..database import get_db
-from .. import models, schemas, crud
+from .. import models, schemas  # crud import removed - not used
 from ..core.crud_base import create_crud
 from ..core.security import handle_database_error
 from ..business_logic import PaymentManager
@@ -195,7 +194,8 @@ async def generate_upi_qr_code(
     db: Session = Depends(get_db)
 ):
     """Generate UPI QR code for payment"""
-    return await crud.generate_upi_qr_code(db=db, payment=payment)
+    # TODO: Implement generate_upi_qr_code logic here or in service layer
+    raise HTTPException(status_code=501, detail="Not implemented")
 
 @router.get("/upi/{merchant_tx_id}", response_model=schemas.UPIPaymentResponse)
 @handle_database_error

@@ -1,7 +1,7 @@
 """
 Migration endpoints for database updates
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from sqlalchemy import text, create_engine
 from api.core.config import settings
 

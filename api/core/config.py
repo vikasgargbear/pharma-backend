@@ -123,7 +123,7 @@ def get_supabase_client():
     """Get Supabase client if configured"""
     if settings.is_supabase:
         try:
-            from supabase import create_client, Client
+            from supabase import create_client
             return create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
         except ImportError:
             print("⚠️  Supabase client not installed. Run: pip install supabase")

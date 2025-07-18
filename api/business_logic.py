@@ -6,16 +6,14 @@ Handles real-time inventory updates, payment processing, and automatic triggers
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from datetime import datetime, date
-from typing import List, Optional, Dict, Any
+from typing import List, Dict
 import json
 
 try:
     from . import models, schemas
-    from .database import get_db
 except ImportError:
     import models
     import schemas
-    from database import get_db
 
 class InventoryManager:
     """Handles real-time inventory updates and FIFO logic"""

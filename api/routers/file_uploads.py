@@ -14,7 +14,7 @@ import mimetypes
 from pathlib import Path
 
 from ..database import get_db
-from .. import models, schemas, crud
+from .. import models, schemas
 from ..core.crud_base import create_crud
 from ..core.security import handle_database_error
 from ..core.config import settings, get_supabase_client

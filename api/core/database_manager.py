@@ -2,7 +2,6 @@
 World-class Database Connection Manager
 Implements circuit breaker pattern, lazy connections, and graceful degradation
 """
-import asyncio
 import logging
 import time
 from typing import Optional

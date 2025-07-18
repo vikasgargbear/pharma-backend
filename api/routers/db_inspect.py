@@ -6,7 +6,6 @@ Minimal implementation to avoid import issues
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Dict, Any, List
 
 from ..database import get_db
 

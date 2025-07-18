@@ -37,7 +37,6 @@ class OrderItemBase(BaseModel):
 
 class OrderItemCreate(OrderItemBase):
     """Schema for creating order item"""
-    pass
 
 
 class OrderItemResponse(OrderItemBase):

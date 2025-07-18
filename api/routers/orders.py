@@ -10,7 +10,7 @@ import os
 from fastapi.responses import FileResponse
 
 from ..database import get_db
-from .. import models, schemas, crud
+from .. import models, schemas  # crud import removed - not used
 from ..core.crud_base import create_crud
 from ..core.security import handle_database_error
 from ..dependencies import get_current_user
@@ -110,7 +110,8 @@ def delete_order_item(order_item_id: int, db: Session = Depends(get_db)):
 @handle_database_error
 def create_complete_order(order: schemas.CompleteOrderCreate, db: Session = Depends(get_db)):
     """Create a complete order with items and payment processing"""
-    return crud.create_complete_order(db=db, order=order)
+    # TODO: Implement create_complete_order logic here or in service layer
+    raise HTTPException(status_code=501, detail="Not implemented")
 
 @router.get("/{order_id}/payment-status")
 @handle_database_error

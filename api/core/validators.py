@@ -4,8 +4,6 @@ Includes input sanitization, format validation, and security checks
 """
 import re
 import bleach
-from typing import Optional, Any, List
-from pydantic import validator, EmailStr
 from email_validator import validate_email, EmailNotValidError
 
 

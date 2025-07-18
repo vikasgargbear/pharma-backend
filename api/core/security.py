@@ -4,7 +4,6 @@ Simplified version for Phase 2 optimization
 """
 import logging
 import uuid
-from typing import Optional
 from datetime import datetime
 from functools import wraps
 

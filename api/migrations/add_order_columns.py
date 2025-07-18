@@ -3,7 +3,7 @@ Migration to add enterprise order management fields
 """
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from typing import List, Dict
+from typing import Dict
 import logging
 
 logger = logging.getLogger(__name__)

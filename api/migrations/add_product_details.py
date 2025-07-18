@@ -1,14 +1,12 @@
 """
 Migration script to add additional pharmaceutical product details to the Product table.
 """
-from sqlalchemy import create_engine
 import os
 import sys
-from datetime import datetime
 
 # Add parent directory to path to import from api
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database import SQLALCHEMY_DATABASE_URL, engine
+from database import engine
 
 def run_migration():
     """

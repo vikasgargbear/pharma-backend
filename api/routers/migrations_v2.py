@@ -4,7 +4,6 @@ This is how companies scale - controlled migrations
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Dict, Any
 import logging
 
 from ..database import get_db
@@ -23,8 +22,7 @@ from ..migrations.add_inventory_tables import (
     get_existing_tables
 )
 from ..migrations.create_billing_tables import (
-    create_billing_tables,
-    drop_billing_tables
+    create_billing_tables
 )
 
 logger = logging.getLogger(__name__)

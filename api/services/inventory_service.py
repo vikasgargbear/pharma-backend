@@ -2,20 +2,19 @@
 Inventory service layer for business logic
 Handles batch management, stock movements, and expiry tracking
 """
-from typing import Optional, List, Dict, Any
-from datetime import datetime, date, timedelta
+from typing import Optional, List
+from datetime import date, timedelta
 from decimal import Decimal
 from sqlalchemy.orm import Session
-from sqlalchemy import text, and_, or_, func
+from sqlalchemy import text
 from uuid import UUID
 import logging
 
 from ..schemas_v2.inventory import (
-    BatchCreate, BatchUpdate, BatchResponse,
-    StockMovementCreate, StockMovementResponse,
-    StockAdjustment, StockTransfer,
-    CurrentStock, ExpiryAlert, StockValuation,
-    InventoryDashboard
+    BatchCreate, BatchResponse, StockMovementCreate,
+    StockMovementResponse, StockAdjustment,
+    CurrentStock, ExpiryAlert,
+    StockValuation, InventoryDashboard
 )
 
 logger = logging.getLogger(__name__)

@@ -7,16 +7,14 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from uuid import UUID
 import logging
 
 from ...database import get_db
 from ...schemas_v2.inventory import (
-    BatchCreate, BatchUpdate, BatchResponse,
-    StockMovementCreate, StockMovementResponse,
-    StockAdjustment, StockTransfer,
-    CurrentStock, ExpiryAlert, StockValuation,
-    InventoryDashboard
+    BatchCreate, BatchResponse, StockMovementCreate,
+    StockMovementResponse, StockAdjustment,
+    CurrentStock, ExpiryAlert,
+    StockValuation, InventoryDashboard
 )
 from ...services.inventory_service import InventoryService
 

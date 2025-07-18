@@ -6,32 +6,25 @@ World-class pharmaceutical management system with comprehensive features
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import List
 from datetime import datetime
 # import sentry_sdk
 # from sentry_sdk.integrations.fastapi import FastApiIntegration
 # from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
-from fastapi import FastAPI, Depends, HTTPException, Form, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer
 # import redis
-import json
 from collections import defaultdict
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import and_, text
-from datetime import date
 
 # Handle both package and direct imports for maximum compatibility
 # FIXED: Import issues when running as module vs direct execution
 # This allows the app to work with both 'python -m api.main' and 'uvicorn api.main:app'
 # Import core modules
-from . import models, base_schemas as schemas
-from .database import SessionLocal, engine, get_db, init_database, check_database_connection
 from .core.config import settings
 
 # Import working routers

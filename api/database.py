@@ -61,9 +61,9 @@ def check_database_connection():
 def init_database():
     """Initialize database tables"""
     try:
-        from . import models
+        pass
     except ImportError:
-        import models
+        pass
     
     # FIXED: Skip table creation for PostgreSQL/Supabase (tables already exist)
     # This optimization prevents SQLAlchemy from checking all tables during startup
