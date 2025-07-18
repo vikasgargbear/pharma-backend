@@ -196,7 +196,7 @@ class OrderService:
                     db.execute(text("""
                         UPDATE batches
                         SET quantity_available = quantity_available - :quantity,
-                            quantity_allocated = quantity_allocated + :quantity,
+                            quantity_sold = quantity_sold + :quantity,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE batch_id = :batch_id
                     """), {
@@ -242,7 +242,7 @@ class OrderService:
                         db.execute(text("""
                             UPDATE batches
                             SET quantity_available = quantity_available - :allocation,
-                                quantity_allocated = quantity_allocated + :allocation,
+                                quantity_sold = quantity_sold + :allocation,
                                 updated_at = CURRENT_TIMESTAMP
                             WHERE batch_id = :batch_id
                         """), {
@@ -330,7 +330,7 @@ class OrderService:
             db.execute(text("""
                 UPDATE batches b
                 SET quantity_available = quantity_available + im.quantity,
-                    quantity_allocated = quantity_allocated - im.quantity,
+                    quantity_sold = quantity_sold - im.quantity,
                     updated_at = CURRENT_TIMESTAMP
                 FROM (
                     SELECT batch_id, SUM(-quantity) as quantity
