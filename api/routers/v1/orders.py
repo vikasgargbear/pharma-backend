@@ -222,7 +222,9 @@ async def list_orders(
             """), {"order_id": order_dict["order_id"]})
             
             order_dict["items"] = [dict(item._mapping) for item in items_result]
-            order_dict["balance_amount"] = order_dict["total_amount"] - order_dict["paid_amount"]
+            # Map final_amount to total_amount for schema compatibility
+            order_dict["total_amount"] = order_dict.get("final_amount", 0)
+            order_dict["balance_amount"] = order_dict["total_amount"] - order_dict.get("paid_amount", 0)
             
             orders.append(OrderResponse(**order_dict))
         
@@ -379,7 +381,7 @@ async def generate_invoice(
         # Get invoice details
         invoice = db.execute(text("""
             SELECT i.*, o.order_number, o.subtotal_amount, 
-                   o.tax_amount, o.total_amount
+                   o.tax_amount, o.final_amount as total_amount
             FROM invoices i
             JOIN orders o ON i.order_id = o.order_id
             WHERE i.invoice_id = :id

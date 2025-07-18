@@ -406,21 +406,21 @@ class OrderService:
         
         # Today's stats
         today_stats = db.execute(text("""
-            SELECT COUNT(*) as orders, COALESCE(SUM(total_amount), 0) as amount
+            SELECT COUNT(*) as orders, COALESCE(SUM(final_amount), 0) as amount
             FROM orders
             WHERE org_id = :org_id AND order_date = :today
         """), {"org_id": org_id, "today": today}).fetchone()
         
         # Week stats
         week_stats = db.execute(text("""
-            SELECT COUNT(*) as orders, COALESCE(SUM(total_amount), 0) as amount
+            SELECT COUNT(*) as orders, COALESCE(SUM(final_amount), 0) as amount
             FROM orders
             WHERE org_id = :org_id AND order_date >= :week_start
         """), {"org_id": org_id, "week_start": week_start}).fetchone()
         
         # Month stats
         month_stats = db.execute(text("""
-            SELECT COUNT(*) as orders, COALESCE(SUM(total_amount), 0) as amount
+            SELECT COUNT(*) as orders, COALESCE(SUM(final_amount), 0) as amount
             FROM orders
             WHERE org_id = :org_id AND order_date >= :month_start
         """), {"org_id": org_id, "month_start": month_start}).fetchone()
