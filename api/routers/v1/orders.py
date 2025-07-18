@@ -121,16 +121,20 @@ async def create_order(
             
             # Add selling_price (same as unit_price for now)
             item_data["selling_price"] = item_data.get("selling_price", item_data["unit_price"])
+            # Add total_price (same as line_total)
+            item_data["total_price"] = item_data.get("line_total", 
+                item_data["quantity"] * item_data["unit_price"] - 
+                item_data.get("discount_amount", 0) + item_data.get("tax_amount", 0))
             
             db.execute(text("""
                 INSERT INTO order_items (
                     order_id, product_id, batch_id, quantity,
                     unit_price, selling_price, discount_percent, discount_amount,
-                    tax_percent, tax_amount, line_total
+                    tax_percent, tax_amount, line_total, total_price
                 ) VALUES (
                     :order_id, :product_id, :batch_id, :quantity,
                     :unit_price, :selling_price, :discount_percent, :discount_amount,
-                    :tax_percent, :tax_amount, :line_total
+                    :tax_percent, :tax_amount, :line_total, :total_price
                 )
             """), item_data)
         
