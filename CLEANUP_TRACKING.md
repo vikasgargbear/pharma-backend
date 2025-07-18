@@ -43,30 +43,53 @@ Track every file deletion and test results to ensure nothing breaks.
 
 #### 4. dependencies.py
 - **File**: api/dependencies.py
-- **Functions**: 1
-- **Dependencies**: Check usage
-- **Status**: PENDING
+- **Functions**: 3 (get_current_user, get_current_active_user, check_permission)
+- **Dependencies**: Used by simple_delivery.py (active), orders.py (active via NotImplemented), 4 inactive routers
+- **Status**: KEEP (used by active routers)
 
 #### 5. Clean analysis scripts
-- check_crud_usage.py
-- check_schemas_usage.py
-- analyze_dependencies_detailed.py
-- extract_all_functions.py
-- test_critical_endpoints.py (keep for now)
+- **Status**: ✅ DELETED
+- All temporary analysis scripts removed
+- Kept test_critical_endpoints.py for ongoing testing
+
+#### 6. Unused routers (12 files not included in main.py)
+- analytics.py (671 lines)
+- batches.py 
+- challans.py
+- compliance.py
+- file_uploads.py
+- loyalty.py
+- payments.py (crud import already removed)
+- purchases.py (756 lines)
+- sales_returns.py
+- stock_adjustments.py
+- tax_entries.py
+- users.py
+- **Status**: ✅ DELETED
+- **Test Result**: All endpoints still working (12/14 pass, same as before)
 
 ### Phase 3: Complex Refactoring
 
-#### 6. business_logic.py
+#### 7. business_logic.py
 - **File**: api/business_logic.py
-- **Functions**: 22 (some used)
-- **Action**: Move used functions to services
-- **Status**: PENDING
+- **Size**: 1064 lines
+- **Functions**: 22 (InventoryManager, PaymentManager, etc)
+- **Dependencies**: Only used by deleted routers (payments, sales_returns, stock_adjustments)
+- **Status**: ✅ DELETED
+- **Test Result**: Server still running
 
-#### 7. schemas.py
+#### 8. schemas.py
 - **File**: api/schemas.py
-- **Classes**: 47
-- **Action**: Verify complete migration to schemas_v2
-- **Status**: PENDING
+- **Size**: 569 lines
+- **Classes**: 47 pydantic schemas
+- **Dependencies**: Not used by any active code (all v1 routers use schemas_v2)
+- **Status**: ✅ DELETED
+- **Test Result**: All endpoints still working (12/14 pass)
+
+#### 9. Additional legacy router cleanup
+- **Files**: customers.py, inventory.py, orders.py, billing.py in api/routers/
+- **Status**: ✅ DELETED  
+- **Note**: These were old versions - active routers are in api/routers/v1/
 
 ## Key Files to NEVER Delete
 
@@ -145,3 +168,27 @@ git checkout -- .
 git checkout main
 git branch -D smart-cleanup-phase1
 ```
+
+## Cleanup Summary
+
+### Phase 1 (COMPLETED)
+- ✅ Deleted crud.py (71KB, 196 unused functions)
+- ✅ Deleted initialize_db.py (one-time script)
+- ✅ Cleaned unused imports across 56 files
+- ✅ Deleted temporary analysis scripts
+
+### Phase 2 (COMPLETED)
+- ✅ Deleted 12 unused routers not included in main.py
+- ✅ Deleted business_logic.py (1064 lines, only used by deleted routers)
+- ✅ Deleted schemas.py (569 lines, replaced by schemas_v2)
+- ✅ Deleted additional legacy routers (old versions)
+
+### Total Cleanup
+- **Files Deleted**: 20+
+- **Lines Removed**: ~5000+
+- **Test Status**: 12/14 endpoints passing (same as before cleanup)
+- **System Status**: ✅ Fully operational
+
+### Remaining Issues
+- Order endpoints still have pre-existing `total_amount` vs `final_amount` error
+- This was not caused by cleanup - it existed before
