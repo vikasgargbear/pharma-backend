@@ -259,8 +259,8 @@ async def get_order(
             SELECT o.*, c.customer_name, c.customer_code, c.phone as customer_phone
             FROM orders o
             JOIN customers c ON o.customer_id = c.customer_id
-            WHERE o.order_id = :id
-        """), {"id": order_id})
+            WHERE o.order_id = :id AND o.org_id = :org_id
+        """), {"id": order_id, "org_id": DEFAULT_ORG_ID})
         
         order = result.fetchone()
         if not order:
@@ -299,8 +299,8 @@ async def confirm_order(
     try:
         # Check order exists and is pending
         status = db.execute(text("""
-            SELECT order_status FROM orders WHERE order_id = :id
-        """), {"id": order_id}).scalar()
+            SELECT order_status FROM orders WHERE order_id = :id AND org_id = :org_id
+        """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).scalar()
         
         if not status:
             raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
@@ -317,8 +317,8 @@ async def confirm_order(
             SET order_status = 'confirmed',
                 confirmed_at = CURRENT_TIMESTAMP,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE order_id = :id
-        """), {"id": order_id})
+            WHERE order_id = :id AND org_id = :org_id
+        """), {"id": order_id, "org_id": DEFAULT_ORG_ID})
         
         db.commit()
         
@@ -343,8 +343,8 @@ async def generate_invoice(
     try:
         # Check order exists and is confirmed
         order = db.execute(text("""
-            SELECT order_status, order_number FROM orders WHERE order_id = :id
-        """), {"id": order_id}).fetchone()
+            SELECT order_status, order_number FROM orders WHERE order_id = :id AND org_id = :org_id
+        """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).fetchone()
         
         if not order:
             raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
@@ -380,8 +380,8 @@ async def generate_invoice(
             UPDATE orders
             SET order_status = 'invoiced',
                 updated_at = CURRENT_TIMESTAMP
-            WHERE order_id = :id
-        """), {"id": order_id})
+            WHERE order_id = :id AND org_id = :org_id
+        """), {"id": order_id, "org_id": DEFAULT_ORG_ID})
         
         db.commit()
         
@@ -415,8 +415,8 @@ async def mark_delivered(
     try:
         # Check order exists and is ready for delivery
         status = db.execute(text("""
-            SELECT order_status FROM orders WHERE order_id = :id
-        """), {"id": order_id}).scalar()
+            SELECT order_status FROM orders WHERE order_id = :id AND org_id = :org_id
+        """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).scalar()
         
         if not status:
             raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
