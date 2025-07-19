@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timedelta
 
 # Base URL - update for production
-BASE_URL = "http://localhost:8000"  # Change to production URL when ready
+BASE_URL = "https://pharma-backend-production-0c09.up.railway.app"  # Production URL
 
 def test_parse_invoice():
     """Test uploading and parsing a purchase invoice"""
