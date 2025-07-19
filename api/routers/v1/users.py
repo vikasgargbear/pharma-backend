@@ -28,7 +28,7 @@ def get_users(
 ):
     """Get users with optional search"""
     try:
-        query = "SELECT user_id, username, email, is_active, created_at FROM users WHERE 1=1"
+        query = "SELECT id as user_id, username, email FROM users WHERE 1=1"
         params = {}
         
         if search:
@@ -52,7 +52,7 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
     """Get a single user by ID (excluding password)"""
     try:
         result = db.execute(
-            text("SELECT user_id, username, email, is_active, created_at FROM users WHERE user_id = :user_id"),
+            text("SELECT id as user_id, username, email FROM users WHERE id = :user_id"),
             {"user_id": user_id}
         )
         user = result.first()
@@ -77,11 +77,9 @@ def create_user(user_data: dict, db: Session = Depends(get_db)):
         
         # Return user without password
         return {
-            "user_id": user.user_id,
+            "user_id": user.id,
             "username": user.username,
-            "email": user.email,
-            "is_active": user.is_active,
-            "created_at": user.created_at
+            "email": user.email
         }
     except Exception as e:
         db.rollback()
@@ -92,7 +90,7 @@ def create_user(user_data: dict, db: Session = Depends(get_db)):
 def update_user(user_id: int, user_data: dict, db: Session = Depends(get_db)):
     """Update a user"""
     try:
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -110,11 +108,9 @@ def update_user(user_id: int, user_data: dict, db: Session = Depends(get_db)):
         
         # Return user without password
         return {
-            "user_id": user.user_id,
+            "user_id": user.id,
             "username": user.username,
-            "email": user.email,
-            "is_active": user.is_active,
-            "created_at": user.created_at
+            "email": user.email
         }
     except HTTPException:
         raise
@@ -127,7 +123,7 @@ def update_user(user_id: int, user_data: dict, db: Session = Depends(get_db)):
 def delete_user(user_id: int, db: Session = Depends(get_db)):
     """Delete a user"""
     try:
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
