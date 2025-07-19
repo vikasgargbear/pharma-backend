@@ -26,6 +26,15 @@ BEGIN
     
     -- Validate based on movement type
     CASE NEW.movement_type
+        WHEN 'purchase' THEN
+            -- Purchases add stock (quantity_in)
+            IF NEW.quantity_in <= 0 THEN
+                RAISE EXCEPTION 'Purchase quantity must be positive';
+            END IF;
+            IF NEW.quantity_out != 0 THEN
+                RAISE EXCEPTION 'Purchase should not have quantity_out';
+            END IF;
+            
         WHEN 'sales_return' THEN
             -- Sales returns add stock back (quantity_in)
             IF NEW.quantity_in <= 0 THEN
@@ -69,6 +78,10 @@ BEGIN
                 RAISE EXCEPTION 'Insufficient stock for adjustment. Available: %, Requested: %', 
                                 v_batch.quantity_available, NEW.quantity_out;
             END IF;
+            
+        ELSE
+            -- For other movement types (sales, etc.), just pass through
+            NULL;
     END CASE;
     
     -- Set product_id from batch if not provided
@@ -102,6 +115,10 @@ BEGIN
     UPDATE batches 
     SET 
         quantity_available = quantity_available + NEW.quantity_in - NEW.quantity_out,
+        quantity_received = CASE
+            WHEN NEW.movement_type = 'purchase' THEN COALESCE(quantity_received, 0) + NEW.quantity_in
+            ELSE quantity_received
+        END,
         quantity_sold = CASE 
             WHEN NEW.movement_type = 'sales' THEN quantity_sold + NEW.quantity_out
             WHEN NEW.movement_type = 'sales_return' THEN GREATEST(0, quantity_sold - NEW.quantity_in)
