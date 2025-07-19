@@ -1,0 +1,423 @@
+"""
+Purchase Order Upload and Extraction API Router
+Handles PDF/image upload, parsing, and purchase order creation
+"""
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+import logging
+from datetime import datetime
+import os
+import tempfile
+import shutil
+from decimal import Decimal
+
+from ...database import get_db
+from bill_parser import parse_pdf
+from bill_parser.models import Invoice, InvoiceItem
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/purchase-upload", tags=["purchase-upload"])
+
+@router.post("/parse-invoice")
+async def parse_purchase_invoice(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload and parse a purchase invoice (PDF/image)
+    Returns extracted data for user verification
+    """
+    try:
+        # Validate file type
+        allowed_types = ["application/pdf", "image/jpeg", "image/png", "image/jpg"]
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File type {file.content_type} not allowed. Use PDF or image files."
+            )
+        
+        # Create temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
+            # Copy uploaded file to temp file
+            shutil.copyfileobj(file.file, tmp_file)
+            tmp_path = tmp_file.name
+        
+        try:
+            # Parse the invoice
+            invoice_data = parse_pdf(tmp_path)
+            
+            if not invoice_data:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Could not extract data from the invoice. Please try manual entry."
+                )
+            
+            # Convert Invoice model to dict for JSON response
+            response_data = {
+                "status": "success",
+                "confidence_score": getattr(invoice_data, 'confidence_score', 0.0),
+                "extracted_data": {
+                    "invoice_number": invoice_data.invoice_number,
+                    "invoice_date": invoice_data.invoice_date.isoformat() if invoice_data.invoice_date else None,
+                    "supplier_name": invoice_data.supplier_name,
+                    "supplier_gstin": invoice_data.supplier_gstin,
+                    "supplier_address": invoice_data.supplier_address,
+                    "drug_license": invoice_data.drug_license_number,
+                    "subtotal": float(invoice_data.subtotal or 0),
+                    "tax_amount": float(invoice_data.tax_amount or 0),
+                    "discount_amount": float(invoice_data.discount_amount or 0),
+                    "grand_total": float(invoice_data.grand_total or 0),
+                    "items": []
+                },
+                "manual_review_required": False
+            }
+            
+            # Process items
+            for item in invoice_data.items:
+                item_data = {
+                    "description": item.description,
+                    "hsn_code": item.hsn_code,
+                    "batch_number": item.batch_number,
+                    "expiry_date": item.expiry_date,
+                    "quantity": item.quantity,
+                    "unit": item.unit,
+                    "rate": float(item.rate or 0),
+                    "mrp": float(item.mrp or 0),
+                    "discount_percent": float(item.discount_percent or 0),
+                    "tax_percent": float(item.tax_percent or 0),
+                    "amount": float(item.amount or 0)
+                }
+                response_data["extracted_data"]["items"].append(item_data)
+            
+            # Check if manual review is needed based on confidence
+            if getattr(invoice_data, 'confidence_score', 0) < 0.8:
+                response_data["manual_review_required"] = True
+                response_data["review_reason"] = "Low confidence score in extraction"
+            
+            # Try to match supplier
+            if invoice_data.supplier_gstin:
+                supplier = db.execute(
+                    text("SELECT supplier_id, supplier_name FROM suppliers WHERE gst_number = :gstin"),
+                    {"gstin": invoice_data.supplier_gstin}
+                ).first()
+                
+                if supplier:
+                    response_data["extracted_data"]["supplier_id"] = supplier.supplier_id
+                    response_data["extracted_data"]["supplier_matched"] = True
+                else:
+                    response_data["extracted_data"]["supplier_matched"] = False
+            
+            # Try to match products by name or HSN
+            for item in response_data["extracted_data"]["items"]:
+                product_match = None
+                
+                # Try exact name match first
+                if item["description"]:
+                    product_match = db.execute(
+                        text("""
+                            SELECT product_id, product_name, hsn_code 
+                            FROM products 
+                            WHERE LOWER(product_name) = LOWER(:name)
+                            LIMIT 1
+                        """),
+                        {"name": item["description"]}
+                    ).first()
+                
+                # Try HSN match if name didn't work
+                if not product_match and item["hsn_code"]:
+                    product_match = db.execute(
+                        text("""
+                            SELECT product_id, product_name, hsn_code 
+                            FROM products 
+                            WHERE hsn_code = :hsn
+                            LIMIT 1
+                        """),
+                        {"hsn": item["hsn_code"]}
+                    ).first()
+                
+                if product_match:
+                    item["product_id"] = product_match.product_id
+                    item["product_matched"] = True
+                    item["matched_product_name"] = product_match.product_name
+                else:
+                    item["product_matched"] = False
+            
+            return response_data
+            
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error parsing invoice: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse invoice: {str(e)}"
+        )
+
+@router.post("/create-from-parsed")
+def create_purchase_from_parsed(
+    purchase_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Create purchase order from parsed/verified invoice data
+    Allows user to edit extracted data before creation
+    """
+    try:
+        # Begin transaction
+        
+        # 1. Handle supplier
+        supplier_id = purchase_data.get("supplier_id")
+        if not supplier_id:
+            # Create new supplier if needed
+            supplier_data = purchase_data.get("supplier", {})
+            if not supplier_data.get("supplier_name"):
+                raise HTTPException(status_code=400, detail="Supplier name is required")
+            
+            # Generate supplier code
+            supplier_code = f"SUP{datetime.now().strftime('%Y%m%d%H%M')}"
+            
+            supplier_id = db.execute(
+                text("""
+                    INSERT INTO suppliers (
+                        org_id, supplier_code, supplier_name, 
+                        gst_number, address, phone, email
+                    ) VALUES (
+                        '12de5e22-eee7-4d25-b3a7-d16d01c6170f', -- Default org
+                        :code, :name, :gstin, :address, :phone, :email
+                    ) RETURNING supplier_id
+                """),
+                {
+                    "code": supplier_code,
+                    "name": supplier_data.get("supplier_name"),
+                    "gstin": supplier_data.get("supplier_gstin"),
+                    "address": supplier_data.get("supplier_address"),
+                    "phone": supplier_data.get("phone"),
+                    "email": supplier_data.get("email")
+                }
+            ).scalar()
+        
+        # 2. Create purchase order
+        purchase_number = f"PO-{datetime.now().strftime('%Y%m%d-%H%M')}"
+        
+        purchase_id = db.execute(
+            text("""
+                INSERT INTO purchases (
+                    org_id, purchase_number, purchase_date,
+                    supplier_id, supplier_invoice_number, supplier_invoice_date,
+                    subtotal_amount, discount_amount, tax_amount, 
+                    other_charges, final_amount, purchase_status
+                ) VALUES (
+                    '12de5e22-eee7-4d25-b3a7-d16d01c6170f', -- Default org
+                    :purchase_number, :purchase_date,
+                    :supplier_id, :invoice_number, :invoice_date,
+                    :subtotal, :discount, :tax, :other_charges, :total, 'draft'
+                ) RETURNING purchase_id
+            """),
+            {
+                "purchase_number": purchase_number,
+                "purchase_date": purchase_data.get("purchase_date", datetime.now().date()),
+                "supplier_id": supplier_id,
+                "invoice_number": purchase_data.get("invoice_number"),
+                "invoice_date": purchase_data.get("invoice_date"),
+                "subtotal": Decimal(str(purchase_data.get("subtotal", 0))),
+                "discount": Decimal(str(purchase_data.get("discount_amount", 0))),
+                "tax": Decimal(str(purchase_data.get("tax_amount", 0))),
+                "other_charges": Decimal(str(purchase_data.get("other_charges", 0))),
+                "total": Decimal(str(purchase_data.get("grand_total", 0)))
+            }
+        ).scalar()
+        
+        # 3. Create purchase items
+        items_created = 0
+        for item in purchase_data.get("items", []):
+            # Handle product matching/creation
+            product_id = item.get("product_id")
+            
+            if not product_id and item.get("create_product", False):
+                # Create new product
+                product_code = f"PROD{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                product_id = db.execute(
+                    text("""
+                        INSERT INTO products (
+                            org_id, product_code, product_name,
+                            hsn_code, category, purchase_price, sale_price, mrp,
+                            gst_percent
+                        ) VALUES (
+                            '12de5e22-eee7-4d25-b3a7-d16d01c6170f',
+                            :code, :name, :hsn, :category,
+                            :purchase_price, :sale_price, :mrp, :gst
+                        ) RETURNING product_id
+                    """),
+                    {
+                        "code": product_code,
+                        "name": item.get("description"),
+                        "hsn": item.get("hsn_code"),
+                        "category": "General", # Default category
+                        "purchase_price": Decimal(str(item.get("rate", 0))),
+                        "sale_price": Decimal(str(item.get("rate", 0) * 1.2)), # 20% markup default
+                        "mrp": Decimal(str(item.get("mrp", 0))),
+                        "gst": Decimal(str(item.get("tax_percent", 12)))
+                    }
+                ).scalar()
+            
+            if product_id:
+                # Create purchase item
+                db.execute(
+                    text("""
+                        INSERT INTO purchase_items (
+                            purchase_id, product_id, product_name,
+                            ordered_quantity, cost_price, mrp,
+                            discount_percent, discount_amount,
+                            tax_percent, tax_amount, total_price,
+                            batch_number, expiry_date,
+                            item_status
+                        ) VALUES (
+                            :purchase_id, :product_id, :product_name,
+                            :quantity, :cost_price, :mrp,
+                            :discount_percent, :discount_amount,
+                            :tax_percent, :tax_amount, :total,
+                            :batch_number, :expiry_date,
+                            'pending'
+                        )
+                    """),
+                    {
+                        "purchase_id": purchase_id,
+                        "product_id": product_id,
+                        "product_name": item.get("description"),
+                        "quantity": item.get("quantity", 0),
+                        "cost_price": Decimal(str(item.get("rate", 0))),
+                        "mrp": Decimal(str(item.get("mrp", 0))),
+                        "discount_percent": Decimal(str(item.get("discount_percent", 0))),
+                        "discount_amount": Decimal(str(item.get("discount_amount", 0))),
+                        "tax_percent": Decimal(str(item.get("tax_percent", 12))),
+                        "tax_amount": Decimal(str(item.get("tax_amount", 0))),
+                        "total": Decimal(str(item.get("amount", 0))),
+                        "batch_number": item.get("batch_number"),
+                        "expiry_date": item.get("expiry_date")
+                    }
+                )
+                items_created += 1
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "purchase_id": purchase_id,
+            "purchase_number": purchase_number,
+            "items_created": items_created,
+            "message": f"Purchase order {purchase_number} created successfully"
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating purchase from parsed data: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create purchase order: {str(e)}"
+        )
+
+@router.get("/parse-history")
+def get_parse_history(
+    skip: int = 0,
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """
+    Get history of parsed invoices (for future enhancement)
+    """
+    # This would retrieve from a parse_history table if we implement one
+    return {
+        "message": "Parse history not yet implemented",
+        "total": 0,
+        "items": []
+    }
+
+@router.post("/validate-invoice")
+def validate_invoice_data(
+    invoice_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Validate parsed invoice data before creation
+    Check for duplicates, validate amounts, etc.
+    """
+    try:
+        validations = {
+            "is_valid": True,
+            "errors": [],
+            "warnings": []
+        }
+        
+        # Check for duplicate invoice
+        if invoice_data.get("invoice_number") and invoice_data.get("supplier_id"):
+            duplicate = db.execute(
+                text("""
+                    SELECT purchase_id, purchase_number 
+                    FROM purchases 
+                    WHERE supplier_invoice_number = :invoice_num 
+                    AND supplier_id = :supplier_id
+                """),
+                {
+                    "invoice_num": invoice_data.get("invoice_number"),
+                    "supplier_id": invoice_data.get("supplier_id")
+                }
+            ).first()
+            
+            if duplicate:
+                validations["errors"].append(
+                    f"Duplicate invoice found: {duplicate.purchase_number}"
+                )
+                validations["is_valid"] = False
+        
+        # Validate totals
+        items_total = sum(
+            Decimal(str(item.get("amount", 0))) 
+            for item in invoice_data.get("items", [])
+        )
+        
+        invoice_total = Decimal(str(invoice_data.get("grand_total", 0)))
+        
+        if abs(items_total - invoice_total) > Decimal("1.00"):
+            validations["warnings"].append(
+                f"Items total ({items_total}) doesn't match invoice total ({invoice_total})"
+            )
+        
+        # Validate items
+        for idx, item in enumerate(invoice_data.get("items", [])):
+            if not item.get("product_id") and not item.get("create_product"):
+                validations["warnings"].append(
+                    f"Item {idx + 1}: Product not matched and not marked for creation"
+                )
+            
+            if item.get("expiry_date"):
+                try:
+                    expiry = datetime.fromisoformat(item["expiry_date"]).date()
+                    if expiry <= datetime.now().date():
+                        validations["errors"].append(
+                            f"Item {idx + 1}: Product already expired"
+                        )
+                        validations["is_valid"] = False
+                except:
+                    validations["warnings"].append(
+                        f"Item {idx + 1}: Invalid expiry date format"
+                    )
+        
+        return validations
+        
+    except Exception as e:
+        logger.error(f"Error validating invoice: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to validate invoice: {str(e)}"
+        )
