@@ -19,19 +19,43 @@ class InvoiceService:
     def generate_invoice_for_order(db: Session, order_id: int, invoice_date: date, org_id: UUID) -> Dict[str, Any]:
         """Generate a comprehensive invoice for an order"""
         
+        # Check if area column exists
+        area_exists = db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_name = 'customers' 
+                AND column_name = 'area'
+            )
+        """)).scalar()
+        
         # Get order details with customer info
-        order = db.execute(text("""
-            SELECT 
-                o.*,
-                c.customer_name, c.customer_code,
-                c.gstin, c.pan_number,
-                c.address_line1, c.address_line2, c.area, c.city, c.state, c.pincode,
-                c.phone, c.email,
-                c.credit_days
-            FROM orders o
-            JOIN customers c ON o.customer_id = c.customer_id
-            WHERE o.order_id = :order_id AND o.org_id = :org_id
-        """), {"order_id": order_id, "org_id": org_id}).fetchone()
+        if area_exists:
+            order = db.execute(text("""
+                SELECT 
+                    o.*,
+                    c.customer_name, c.customer_code,
+                    c.gstin, c.pan_number,
+                    c.address_line1, c.address_line2, c.area, c.city, c.state, c.pincode,
+                    c.phone, c.email,
+                    c.credit_days
+                FROM orders o
+                JOIN customers c ON o.customer_id = c.customer_id
+                WHERE o.order_id = :order_id AND o.org_id = :org_id
+            """), {"order_id": order_id, "org_id": org_id}).fetchone()
+        else:
+            order = db.execute(text("""
+                SELECT 
+                    o.*,
+                    c.customer_name, c.customer_code,
+                    c.gstin, c.pan_number,
+                    c.address_line1, c.address_line2, NULL as area, c.city, c.state, c.pincode,
+                    c.phone, c.email,
+                    c.credit_days
+                FROM orders o
+                JOIN customers c ON o.customer_id = c.customer_id
+                WHERE o.order_id = :order_id AND o.org_id = :org_id
+            """), {"order_id": order_id, "org_id": org_id}).fetchone()
         
         if not order:
             raise ValueError(f"Order {order_id} not found")
@@ -156,7 +180,7 @@ class InvoiceService:
             address_parts.append(customer_row.address_line1)
         if customer_row.address_line2:
             address_parts.append(customer_row.address_line2)
-        if customer_row.area:
+        if hasattr(customer_row, 'area') and customer_row.area:
             address_parts.append(customer_row.area)
         if customer_row.city:
             address_parts.append(customer_row.city)

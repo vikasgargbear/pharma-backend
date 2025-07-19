@@ -93,22 +93,51 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
 @router.get("/")
 def get_products(
     skip: int = 0, limit: int = 100, category: Optional[str] = None,
-    manufacturer: Optional[str] = None, db: Session = Depends(get_db)
+    manufacturer: Optional[str] = None, search: Optional[str] = None,
+    include_batch_info: bool = True, db: Session = Depends(get_db)
 ):
-    """Get products with optional filtering"""
+    """Get products with optional filtering, search, and batch information"""
     try:
-        # Simple query without complex ORM
-        query = "SELECT * FROM products WHERE 1=1"
+        # Query with batch count and availability
+        if include_batch_info:
+            query = """
+                SELECT p.*, 
+                       COUNT(DISTINCT b.batch_id) as batch_count,
+                       COALESCE(SUM(b.quantity_available), 0) as total_stock,
+                       COUNT(DISTINCT CASE WHEN b.quantity_available > 0 AND (b.expiry_date IS NULL OR b.expiry_date > CURRENT_DATE) THEN b.batch_id END) as available_batches
+                FROM products p
+                LEFT JOIN batches b ON p.product_id = b.product_id AND b.org_id = p.org_id
+                WHERE p.org_id = '12de5e22-eee7-4d25-b3a7-d16d01c6170f'
+            """
+            group_by = " GROUP BY p.product_id"
+        else:
+            query = "SELECT * FROM products WHERE org_id = '12de5e22-eee7-4d25-b3a7-d16d01c6170f'"
+            group_by = ""
+        
         params = {"skip": skip, "limit": limit}
         
+        if search:
+            # Case-insensitive search in product name, code, and generic name
+            query += """ AND (
+                LOWER(p.product_name) LIKE LOWER(:search) OR 
+                LOWER(p.product_code) LIKE LOWER(:search) OR
+                LOWER(p.generic_name) LIKE LOWER(:search) OR
+                LOWER(p.brand_name) LIKE LOWER(:search)
+            )"""
+            params["search"] = f"%{search}%"
+            
         if category:
-            query += " AND category = :category"
+            query += " AND p.category = :category"
             params["category"] = category
         if manufacturer:
-            query += " AND manufacturer = :manufacturer"
+            query += " AND p.manufacturer = :manufacturer"
             params["manufacturer"] = manufacturer
+        
+        # Add GROUP BY for aggregated queries
+        query += group_by
             
-        query += " ORDER BY product_id DESC LIMIT :limit OFFSET :skip"
+        # Order by product name for better UX when searching
+        query += " ORDER BY p.product_name LIMIT :limit OFFSET :skip"
         
         result = db.execute(text(query), params)
         products = []
@@ -118,6 +147,13 @@ def get_products(
             # Convert UUID to string if needed
             if product_dict.get('org_id'):
                 product_dict['org_id'] = str(product_dict['org_id'])
+            
+            # Ensure numeric fields are properly typed
+            if include_batch_info:
+                product_dict['batch_count'] = int(product_dict.get('batch_count', 0))
+                product_dict['total_stock'] = int(product_dict.get('total_stock', 0))
+                product_dict['available_batches'] = int(product_dict.get('available_batches', 0))
+                
             products.append(product_dict)
         
         return products

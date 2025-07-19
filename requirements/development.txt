@@ -1,0 +1,27 @@
+# Development requirements
+# Includes base + dev tools
+
+-r base.txt
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-env==1.1.3
+
+# Code quality
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+isort==5.12.0
+
+# Documentation
+mkdocs==1.5.3
+mkdocs-material==9.4.14
+
+# Debugging
+ipython==8.18.1
+ipdb==0.13.13
+
+# Performance testing
+locust==2.17.0

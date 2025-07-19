@@ -129,22 +129,48 @@ async def list_customers(
         
         # Add filters
         if search:
-            query += """ AND (
-                customer_name ILIKE :search OR 
-                customer_code ILIKE :search OR 
-                phone LIKE :search OR
-                gstin LIKE :search OR
-                area ILIKE :search OR
-                city ILIKE :search
-            )"""
-            count_query += """ AND (
-                customer_name ILIKE :search OR 
-                customer_code ILIKE :search OR 
-                phone LIKE :search OR
-                gstin LIKE :search OR
-                area ILIKE :search OR
-                city ILIKE :search
-            )"""
+            # Check if area column exists in the database
+            area_exists = db.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'customers' 
+                    AND column_name = 'area'
+                )
+            """)).scalar()
+            
+            if area_exists:
+                query += """ AND (
+                    customer_name ILIKE :search OR 
+                    customer_code ILIKE :search OR 
+                    phone LIKE :search OR
+                    gstin LIKE :search OR
+                    area ILIKE :search OR
+                    city ILIKE :search
+                )"""
+                count_query += """ AND (
+                    customer_name ILIKE :search OR 
+                    customer_code ILIKE :search OR 
+                    phone LIKE :search OR
+                    gstin LIKE :search OR
+                    area ILIKE :search OR
+                    city ILIKE :search
+                )"""
+            else:
+                query += """ AND (
+                    customer_name ILIKE :search OR 
+                    customer_code ILIKE :search OR 
+                    phone LIKE :search OR
+                    gstin LIKE :search OR
+                    city ILIKE :search
+                )"""
+                count_query += """ AND (
+                    customer_name ILIKE :search OR 
+                    customer_code ILIKE :search OR 
+                    phone LIKE :search OR
+                    gstin LIKE :search OR
+                    city ILIKE :search
+                )"""
             params["search"] = f"%{search}%"
         
         if customer_type:

@@ -102,18 +102,41 @@ async def get_invoice_details(
     - Organization details
     """
     try:
+        # Check if area column exists
+        area_exists = db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_name = 'customers' 
+                AND column_name = 'area'
+            )
+        """)).scalar()
+        
         # Get invoice with all related data
-        invoice_query = text("""
-            SELECT 
-                i.*,
-                o.order_number, o.order_date, o.org_id,
-                c.customer_code, c.phone as customer_phone, c.email as customer_email,
-                c.address_line1, c.address_line2, c.area, c.city, c.state, c.pincode
-            FROM invoices i
-            JOIN orders o ON i.order_id = o.order_id
-            JOIN customers c ON i.customer_id = c.customer_id
-            WHERE i.invoice_id = :invoice_id
-        """)
+        if area_exists:
+            invoice_query = text("""
+                SELECT 
+                    i.*,
+                    o.order_number, o.order_date, o.org_id,
+                    c.customer_code, c.phone as customer_phone, c.email as customer_email,
+                    c.address_line1, c.address_line2, c.area, c.city, c.state, c.pincode
+                FROM invoices i
+                JOIN orders o ON i.order_id = o.order_id
+                JOIN customers c ON i.customer_id = c.customer_id
+                WHERE i.invoice_id = :invoice_id
+            """)
+        else:
+            invoice_query = text("""
+                SELECT 
+                    i.*,
+                    o.order_number, o.order_date, o.org_id,
+                    c.customer_code, c.phone as customer_phone, c.email as customer_email,
+                    c.address_line1, c.address_line2, NULL as area, c.city, c.state, c.pincode
+                FROM invoices i
+                JOIN orders o ON i.order_id = o.order_id
+                JOIN customers c ON i.customer_id = c.customer_id
+                WHERE i.invoice_id = :invoice_id
+            """)
         
         invoice = db.execute(invoice_query, {"invoice_id": invoice_id}).fetchone()
         

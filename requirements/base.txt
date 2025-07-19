@@ -1,0 +1,33 @@
+# Base requirements for pharma-backend
+# Core dependencies needed for all environments
+
+# FastAPI and web server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0.post1
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+# Data validation and serialization
+pydantic==2.5.0
+pydantic[email]
+
+# Authentication and security
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.1.1
+
+# Environment and configuration
+python-dotenv==1.0.0
+
+# Date and time
+python-dateutil==2.8.2
+
+# HTTP client (for testing)
+httpx==0.25.2
+
+# CORS support
+fastapi-cors==0.0.6
