@@ -42,7 +42,8 @@ from .routers import (
 from .routers.v1 import (
     customers_router, orders_router, inventory_router, billing_router, 
     payments_router, invoices_router, order_items_router, users_router,
-    suppliers_router, purchases_router, delivery_challan_router, dashboard_router
+    suppliers_router, purchases_router, delivery_challan_router, dashboard_router,
+    sales_returns_router, stock_adjustments_router, tax_entries_router
 )
 
 # Configure Sentry for error tracking
@@ -199,6 +200,9 @@ app.include_router(suppliers_router)
 app.include_router(purchases_router)
 app.include_router(delivery_challan_router)
 app.include_router(dashboard_router)
+app.include_router(sales_returns_router)
+app.include_router(stock_adjustments_router)
+app.include_router(tax_entries_router)
 
 # Request timing middleware
 @app.middleware("http")

@@ -13,6 +13,9 @@ from .suppliers import router as suppliers_router
 from .purchases import router as purchases_router
 from .delivery_challan import router as delivery_challan_router
 from .dashboard import router as dashboard_router
+from .sales_returns import router as sales_returns_router
+from .stock_adjustments import router as stock_adjustments_router
+from .tax_entries import router as tax_entries_router
 
 __all__ = [
     "customers_router", 
@@ -26,5 +29,8 @@ __all__ = [
     "suppliers_router",
     "purchases_router",
     "delivery_challan_router",
-    "dashboard_router"
+    "dashboard_router",
+    "sales_returns_router",
+    "stock_adjustments_router",
+    "tax_entries_router"
 ]
