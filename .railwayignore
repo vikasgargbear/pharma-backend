@@ -1,0 +1,27 @@
+# Ignore files for Railway deployment
+__pycache__/
+*.pyc
+.git/
+.env
+.env.local
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+test_results/
+tests/
+docs/
+scripts/testing/
+*.log
+.DS_Store
+
+# Ignore other deployment configs
+vercel.json
+render.yaml
+Procfile.backup
+
+# Ignore local test files
+test_*.py
+check_*.py
