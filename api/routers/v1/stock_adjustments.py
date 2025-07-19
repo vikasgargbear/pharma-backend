@@ -54,11 +54,11 @@ def get_stock_adjustments(
                 END as quantity_adjusted,
                 im.notes as reason,
                 im.reference_number,
-                u.username as adjusted_by_name
+                u.full_name as adjusted_by_name
             FROM inventory_movements im
             JOIN products p ON im.product_id = p.product_id
             LEFT JOIN batches b ON im.batch_id = b.batch_id
-            LEFT JOIN users u ON im.performed_by = u.id
+            LEFT JOIN org_users u ON im.performed_by = u.user_id
             WHERE im.movement_type IN ('stock_damage', 'stock_expiry', 'stock_count', 'stock_adjustment')
         """
         params = {}
