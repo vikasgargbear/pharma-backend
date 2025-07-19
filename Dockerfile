@@ -63,5 +63,6 @@ USER pharmauser
 
 # Railway will set the PORT dynamically
 
-# Start the application using Python script
-CMD ["python", "scripts/deployment/start_app.py"]
+# Set working directory and start the application
+WORKDIR /app
+CMD ["python", "start.py"]
