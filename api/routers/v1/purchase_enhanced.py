@@ -381,6 +381,103 @@ def receive_purchase_items(
         logger.error(f"Error receiving purchase items: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to receive items: {str(e)}")
 
+@router.post("/{purchase_id}/receive-fixed")
+def receive_purchase_items_fixed(
+    purchase_id: int,
+    receive_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Receive items - Fixed version that works with auto batch trigger
+    Only updates purchase items and status, lets trigger create batches
+    """
+    try:
+        # Get purchase
+        purchase = db.execute(
+            text("SELECT * FROM purchases WHERE purchase_id = :id"),
+            {"id": purchase_id}
+        ).first()
+        
+        if not purchase:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+        
+        if purchase.purchase_status == "received":
+            raise HTTPException(status_code=400, detail="Purchase already received")
+        
+        # Update purchase items
+        for item in receive_data.get("items", []):
+            item_id = item.get("purchase_item_id")
+            received_qty = item.get("received_quantity", 0)
+            
+            if received_qty <= 0:
+                continue
+            
+            # Update item
+            update_fields = ["received_quantity = :received_quantity"]
+            params = {
+                "item_id": item_id,
+                "purchase_id": purchase_id,
+                "received_quantity": received_qty
+            }
+            
+            if item.get("batch_number"):
+                update_fields.append("batch_number = :batch_number")
+                params["batch_number"] = item["batch_number"]
+            
+            if item.get("expiry_date"):
+                update_fields.append("expiry_date = :expiry_date")
+                params["expiry_date"] = item["expiry_date"]
+            
+            db.execute(
+                text(f"""
+                    UPDATE purchase_items 
+                    SET {', '.join(update_fields)},
+                        item_status = 'received',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE purchase_item_id = :item_id 
+                    AND purchase_id = :purchase_id
+                """),
+                params
+            )
+        
+        # Update purchase status - trigger will create batches
+        grn_number = f"GRN-{purchase.purchase_number}"
+        
+        db.execute(
+            text("""
+                UPDATE purchases 
+                SET purchase_status = 'received',
+                    grn_number = :grn_number,
+                    grn_date = CURRENT_DATE
+                WHERE purchase_id = :purchase_id
+            """),
+            {"grn_number": grn_number, "purchase_id": purchase_id}
+        )
+        
+        db.commit()
+        
+        # Count created batches
+        batch_count = db.execute(
+            text("SELECT COUNT(*) FROM batches WHERE purchase_id = :id"),
+            {"id": purchase_id}
+        ).scalar()
+        
+        return {
+            "message": "Purchase received successfully",
+            "purchase_id": purchase_id,
+            "grn_number": grn_number,
+            "batches_created": batch_count,
+            "note": "Batches auto-created with generated numbers if needed"
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/pending-receipts")
 def get_pending_receipts(
     supplier_id: Optional[int] = Query(None),
