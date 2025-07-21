@@ -21,6 +21,129 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/purchase-upload", tags=["purchase-upload"])
 
+@router.post("/parse-invoice-safe")
+async def parse_purchase_invoice_safe(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Parse a purchase invoice PDF with better error handling
+    Falls back to template structure if parsing fails
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Only PDF files are supported"
+            )
+        
+        # Create temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            shutil.copyfileobj(file.file, tmp_file)
+            tmp_path = tmp_file.name
+        
+        try:
+            # Try to parse with bill_parser
+            try:
+                from bill_parser import parse_pdf
+                invoice_data = parse_pdf(tmp_path)
+                
+                # Successfully parsed - return structured data
+                response_data = {
+                    "success": True,
+                    "extracted_data": {
+                        "invoice_number": getattr(invoice_data, 'invoice_number', ''),
+                        "invoice_date": getattr(invoice_data, 'invoice_date', datetime.now()).isoformat() if hasattr(invoice_data, 'invoice_date') and invoice_data.invoice_date else datetime.now().isoformat()[:10],
+                        "supplier_name": getattr(invoice_data, 'supplier_name', ''),
+                        "supplier_gstin": getattr(invoice_data, 'supplier_gstin', ''),
+                        "supplier_address": getattr(invoice_data, 'supplier_address', ''),
+                        "drug_license": getattr(invoice_data, 'drug_license_number', ''),
+                        "subtotal": float(getattr(invoice_data, 'subtotal', 0) or 0),
+                        "tax_amount": float(getattr(invoice_data, 'tax_amount', 0) or 0),
+                        "discount_amount": float(getattr(invoice_data, 'discount_amount', 0) or 0),
+                        "grand_total": float(getattr(invoice_data, 'grand_total', 0) or 0),
+                        "items": []
+                    },
+                    "confidence_score": getattr(invoice_data, 'confidence_score', 0.5),
+                    "manual_review_required": True
+                }
+                
+                # Process items safely
+                if hasattr(invoice_data, 'items') and invoice_data.items:
+                    for item in invoice_data.items:
+                        try:
+                            item_data = {
+                                "product_name": getattr(item, 'description', ''),
+                                "hsn_code": getattr(item, 'hsn_code', ''),
+                                "batch_number": getattr(item, 'batch_number', ''),
+                                "expiry_date": getattr(item, 'expiry_date', ''),
+                                "quantity": int(getattr(item, 'quantity', 0) or 0),
+                                "unit": getattr(item, 'unit', ''),
+                                "cost_price": float(getattr(item, 'rate', 0) or 0),
+                                "mrp": float(getattr(item, 'mrp', 0) or 0),
+                                "discount_percent": float(getattr(item, 'discount_percent', 0) or 0),
+                                "tax_percent": float(getattr(item, 'tax_percent', 12) or 12),
+                                "amount": float(getattr(item, 'amount', 0) or 0)
+                            }
+                            response_data["extracted_data"]["items"].append(item_data)
+                        except Exception as e:
+                            logger.warning(f"Error processing item: {e}")
+                            continue
+                
+                return response_data
+                
+            except Exception as parse_error:
+                logger.warning(f"Bill parser failed: {parse_error}")
+                
+                # Fallback: Return template for manual entry
+                return {
+                    "success": False,
+                    "message": "Could not extract data automatically. Please fill in manually.",
+                    "extracted_data": {
+                        "invoice_number": "",
+                        "invoice_date": datetime.now().isoformat()[:10],
+                        "supplier_name": "",
+                        "supplier_gstin": "",
+                        "supplier_address": "",
+                        "drug_license": "",
+                        "subtotal": 0,
+                        "tax_amount": 0,
+                        "discount_amount": 0,
+                        "grand_total": 0,
+                        "items": [
+                            {
+                                "product_name": "",
+                                "hsn_code": "",
+                                "batch_number": "",  # Will auto-generate if left empty
+                                "expiry_date": "",   # Will default to 2 years if left empty
+                                "quantity": 0,
+                                "unit": "strip",
+                                "cost_price": 0,
+                                "mrp": 0,
+                                "discount_percent": 0,
+                                "tax_percent": 12,
+                                "amount": 0
+                            }
+                        ]
+                    },
+                    "confidence_score": 0,
+                    "manual_review_required": True,
+                    "parsing_error": str(parse_error)
+                }
+                
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+                
+    except Exception as e:
+        logger.error(f"Error in parse_invoice_safe: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process invoice: {str(e)}"
+        )
+
 @router.post("/parse-invoice")
 async def parse_purchase_invoice(
     file: UploadFile = File(...),
