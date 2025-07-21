@@ -49,9 +49,13 @@ async def parse_purchase_invoice_safe(
                 from bill_parser import parse_pdf
                 invoice_data = parse_pdf(tmp_path)
                 
+                # Check if we got any useful data
+                items_found = hasattr(invoice_data, 'items') and len(invoice_data.items) > 0
+                supplier_found = bool(getattr(invoice_data, 'supplier_name', ''))
+                
                 # Successfully parsed - return structured data
                 response_data = {
-                    "success": True,
+                    "success": items_found,  # Only successful if items were found
                     "extracted_data": {
                         "invoice_number": getattr(invoice_data, 'invoice_number', ''),
                         "invoice_date": getattr(invoice_data, 'invoice_date', datetime.now()).isoformat() if hasattr(invoice_data, 'invoice_date') and invoice_data.invoice_date else datetime.now().isoformat()[:10],
@@ -65,7 +69,7 @@ async def parse_purchase_invoice_safe(
                         "grand_total": float(getattr(invoice_data, 'grand_total', 0) or 0),
                         "items": []
                     },
-                    "confidence_score": getattr(invoice_data, 'confidence_score', 0.5),
+                    "confidence_score": getattr(invoice_data, 'confidence', 0.5),
                     "manual_review_required": True
                 }
                 
@@ -90,6 +94,28 @@ async def parse_purchase_invoice_safe(
                         except Exception as e:
                             logger.warning(f"Error processing item: {e}")
                             continue
+                
+                # If no items found, try our custom parser
+                if not items_found:
+                    logger.info("Bill parser found no items, trying custom pharma parser...")
+                    try:
+                        from .pharma_invoice_parser import parse_pharma_invoice
+                        custom_result = parse_pharma_invoice(tmp_path)
+                        
+                        if custom_result["success"] and custom_result["extracted_data"]["items"]:
+                            logger.info(f"Custom parser found {len(custom_result['extracted_data']['items'])} items")
+                            # Merge results - keep bill_parser supplier info if available
+                            if supplier_found:
+                                custom_result["extracted_data"]["supplier_name"] = invoice_data.supplier_name
+                                custom_result["extracted_data"]["supplier_gstin"] = invoice_data.supplier_gstin
+                            return custom_result
+                    except Exception as custom_err:
+                        logger.warning(f"Custom parser failed: {custom_err}")
+                    
+                    # If still no items, provide partial extraction message
+                    if supplier_found:
+                        response_data["message"] = f"Partial extraction: Found supplier '{invoice_data.supplier_name}' but no line items. Please add items manually."
+                        response_data["partial_extraction"] = True
                 
                 return response_data
                 
