@@ -432,8 +432,7 @@ def receive_purchase_items_fixed(
                 text(f"""
                     UPDATE purchase_items 
                     SET {', '.join(update_fields)},
-                        item_status = 'received',
-                        updated_at = CURRENT_TIMESTAMP
+                        item_status = 'received'
                     WHERE purchase_item_id = :item_id 
                     AND purchase_id = :purchase_id
                 """),
