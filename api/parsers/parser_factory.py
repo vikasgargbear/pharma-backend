@@ -11,6 +11,7 @@ from .parsers import (
     PolestarParser,
     GenericPharmaParser
 )
+from .enhanced_parser import EnhancedFlexibleParser
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ class InvoiceParserFactory:
             return GenericPharmaParser()
     
     @staticmethod
-    def parse_invoice(pdf_path: str) -> Dict[str, Any]:
+    def parse_invoice(pdf_path: str, use_enhanced_fallback: bool = True) -> Dict[str, Any]:
         """
         Parse invoice using appropriate parser
         """
@@ -68,6 +69,18 @@ class InvoiceParserFactory:
             
             # Add parser info to result
             result["parser_used"] = parser.__class__.__name__
+            
+            # If no items found and enhanced fallback enabled, try enhanced parser
+            if use_enhanced_fallback and (not result.get("success") or not result["extracted_data"]["items"]):
+                logger.info("No items found with specific parser, trying enhanced flexible parser...")
+                enhanced_parser = EnhancedFlexibleParser()
+                enhanced_result = enhanced_parser.parse(pdf_path)
+                
+                # If enhanced parser found items, use its result
+                if enhanced_result.get("success") and enhanced_result["extracted_data"]["items"]:
+                    enhanced_result["parser_used"] = "EnhancedFlexibleParser (fallback)"
+                    enhanced_result["original_parser_attempted"] = parser.__class__.__name__
+                    return enhanced_result
             
             return result
             

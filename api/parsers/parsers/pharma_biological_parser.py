@@ -96,9 +96,14 @@ class PharmaBiologicalParser(BaseInvoiceParser):
             if not row or len(row) < 5:
                 continue
             
-            # Skip summary rows
-            serial = str(row[0]).strip()
-            if not serial.isdigit():
+            # Skip summary rows - check first part of serial column
+            serial = str(row[0]).strip() if row[0] else ""
+            # Handle multi-line serial numbers like "1.\n1."
+            serial_parts = serial.split('\n')
+            first_part = serial_parts[0].strip('.') if serial_parts else ""
+            
+            # Check if it starts with a digit
+            if not first_part or not any(c.isdigit() for c in first_part):
                 continue
             
             self._parse_item_row(row, data["items"])
@@ -111,19 +116,27 @@ class PharmaBiologicalParser(BaseInvoiceParser):
                 return
                 
             # Handle multi-line cells (product info might be split with \n)
-            serial_col = str(row[0]).strip()
+            serial_col = str(row[0]).strip() if row[0] else ""
             
             # Check if it's a valid item row
             if not any(c.isdigit() for c in serial_col.split('\n')[0]):
                 return
             
-            # Parse multi-line cells
-            codes = str(row[1]).split('\n') if row[1] else []
+            # Parse multi-line cells based on actual structure
+            # Col 2: Item Description, Col 3: HSN, Col 5: Qty+Free
+            # Col 7: Batch, Col 8: Exp, Col 9: MRP, Col 11: Rate, Col 17: Amount
+            
             descriptions = str(row[2]).split('\n') if row[2] else []
             hsns = str(row[3]).split('\n') if row[3] else []
             
+            # Clean descriptions - remove MFG DATE lines and extra info
+            clean_descriptions = []
+            for desc in descriptions:
+                if desc and not any(skip in desc.upper() for skip in ['MFG DATE', 'ADD FREIGHT']):
+                    clean_descriptions.append(desc.strip())
+            
             # Sometimes multiple products are in one row
-            num_items = max(len(descriptions), 1)
+            num_items = max(len(clean_descriptions), 1)
             
             for i in range(num_items):
                 item = {
@@ -136,69 +149,83 @@ class PharmaBiologicalParser(BaseInvoiceParser):
                     "cost_price": 0,
                     "mrp": 0,
                     "discount_percent": 0,
-                    "tax_percent": 12,
+                    "tax_percent": 18,  # Default 18% GST
                     "amount": 0
                 }
                 
                 # Extract product name
-                if i < len(descriptions) and descriptions[i]:
-                    item["product_name"] = descriptions[i].strip()
+                if i < len(clean_descriptions) and clean_descriptions[i]:
+                    item["product_name"] = clean_descriptions[i]
                 
                 # Extract HSN
                 if i < len(hsns) and hsns[i]:
                     item["hsn_code"] = hsns[i].strip()
                 
-                # Parse specific columns based on observed structure
-                # Col 5: Qty+Free, Col 7: Batch, Col 8: Exp, Col 9: MRP, Col 11: Rate, Col 17: Amount
-                
+                # Quantity from column 5
                 if len(row) > 5 and row[5]:
-                    # Quantity column (might have qty+free format)
                     qty_str = str(row[5]).strip()
-                    if qty_str:
-                        # Extract first number
-                        qty_match = re.search(r'(\d+)', qty_str)
+                    # Handle multi-line quantities
+                    qty_lines = qty_str.split('\n')
+                    if i < len(qty_lines):
+                        # Extract first number from the line
+                        qty_match = re.search(r'(\d+)', qty_lines[i])
                         if qty_match:
                             item["quantity"] = int(qty_match.group(1))
                 
+                # Batch from column 7
                 if len(row) > 7 and row[7]:
-                    # Batch number
                     batch_str = str(row[7]).strip()
-                    if batch_str and len(batch_str) > 2:
-                        # Take first line if multi-line
-                        item["batch_number"] = batch_str.split('\n')[0].strip()
+                    batch_lines = batch_str.split('\n') if '\n' in batch_str else [batch_str]
+                    if i < len(batch_lines) and batch_lines[i]:
+                        item["batch_number"] = batch_lines[i].strip()
                 
+                # Expiry from column 8
                 if len(row) > 8 and row[8]:
-                    # Expiry date
                     exp_str = str(row[8]).strip()
-                    if exp_str:
-                        item["expiry_date"] = self._parse_expiry(exp_str)
+                    exp_lines = exp_str.split('\n') if '\n' in exp_str else [exp_str]
+                    if i < len(exp_lines) and exp_lines[i]:
+                        item["expiry_date"] = self._parse_expiry(exp_lines[i])
                 
+                # MRP from column 9
                 if len(row) > 9 and row[9]:
-                    # MRP (might be multi-line)
                     mrp_str = str(row[9]).strip()
-                    if mrp_str:
-                        # Extract first numeric value
-                        mrp_match = re.search(r'(\d+(?:\.\d+)?)', mrp_str)
+                    mrp_lines = mrp_str.split('\n') if '\n' in mrp_str else [mrp_str]
+                    if i < len(mrp_lines):
+                        mrp_match = re.search(r'(\d+(?:\.\d+)?)', mrp_lines[i])
                         if mrp_match:
                             item["mrp"] = self._parse_amount(mrp_match.group(1))
                 
+                # Rate/Cost price from column 11
                 if len(row) > 11 and row[11]:
-                    # Rate/Cost price
                     rate_str = str(row[11]).strip()
-                    if rate_str:
-                        # Extract first numeric value
-                        rate_match = re.search(r'(\d+(?:\.\d+)?)', rate_str)
+                    rate_lines = rate_str.split('\n') if '\n' in rate_str else [rate_str]
+                    if i < len(rate_lines):
+                        rate_match = re.search(r'(\d+(?:\.\d+)?)', rate_lines[i])
                         if rate_match:
                             item["cost_price"] = self._parse_amount(rate_match.group(1))
                 
+                # Amount from column 17
                 if len(row) > 17 and row[17]:
-                    # Amount
                     amt_str = str(row[17]).strip()
-                    if amt_str:
-                        # Extract first numeric value
-                        amt_match = re.search(r'(\d+(?:\.\d+)?)', amt_str)
+                    amt_lines = amt_str.split('\n') if '\n' in amt_str else [amt_str]
+                    if i < len(amt_lines):
+                        amt_match = re.search(r'(\d+(?:\.\d+)?)', amt_lines[i])
                         if amt_match:
                             item["amount"] = self._parse_amount(amt_match.group(1))
+                
+                # Extract tax percentage from columns 14-16 (CGST/SGST/IGST)
+                tax_percent = 0
+                for col_idx in [14, 15, 16]:  # CGST, SGST, IGST columns
+                    if len(row) > col_idx and row[col_idx]:
+                        tax_str = str(row[col_idx]).strip()
+                        tax_match = re.search(r'(\d+(?:\.\d+)?)', tax_str)
+                        if tax_match:
+                            tax_val = float(tax_match.group(1))
+                            if tax_val > 0:
+                                tax_percent += tax_val
+                
+                if tax_percent > 0:
+                    item["tax_percent"] = tax_percent
                 
                 # Only add if we have valid data
                 if item["product_name"] and len(item["product_name"]) > 3:
