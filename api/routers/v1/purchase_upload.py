@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/purchase-upload", tags=["purchase-upload"])
 
+@router.get("/version")
+def get_parser_version():
+    """Check if custom parser is available"""
+    try:
+        from .pharma_invoice_parser import parse_pharma_invoice
+        return {"status": "ok", "custom_parser": "available", "version": "1.1"}
+    except Exception as e:
+        return {"status": "error", "custom_parser": "not found", "error": str(e)}
+
 @router.post("/parse-invoice-safe")
 async def parse_purchase_invoice_safe(
     file: UploadFile = File(...),
