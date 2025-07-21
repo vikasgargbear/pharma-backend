@@ -33,10 +33,13 @@ def get_purchases(
     """Get purchases with optional filtering"""
     try:
         query = """
-            SELECT p.*, s.supplier_name, pr.product_name 
+            SELECT p.*, s.supplier_name,
+                   COUNT(pi.purchase_item_id) as item_count,
+                   STRING_AGG(DISTINCT pr.product_name, ', ') as products
             FROM purchases p
             LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
-            LEFT JOIN products pr ON p.product_id = pr.product_id
+            LEFT JOIN purchase_items pi ON p.purchase_id = pi.purchase_id
+            LEFT JOIN products pr ON pi.product_id = pr.product_id
             WHERE 1=1
         """
         params = {}
@@ -46,7 +49,7 @@ def get_purchases(
             params["supplier_id"] = supplier_id
             
         if product_id:
-            query += " AND p.product_id = :product_id"
+            query += " AND pi.product_id = :product_id"
             params["product_id"] = product_id
             
         if start_date:
@@ -57,6 +60,7 @@ def get_purchases(
             query += " AND p.purchase_date <= :end_date"
             params["end_date"] = end_date
             
+        query += " GROUP BY p.purchase_id, s.supplier_name"
         query += " ORDER BY p.purchase_date DESC LIMIT :limit OFFSET :skip"
         params.update({"limit": limit, "skip": skip})
         
