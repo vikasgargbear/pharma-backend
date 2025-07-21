@@ -28,6 +28,58 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/purchase-upload", tags=["purchase-upload"])
 
+def _check_supplier_in_result(extracted_data: dict, db: Session):
+    """
+    Check if supplier exists and add supplier info to result
+    """
+    try:
+        gstin = extracted_data.get("supplier_gstin")
+        name = extracted_data.get("supplier_name")
+        
+        if gstin:
+            # Check by GSTIN first
+            supplier = db.execute(
+                text("SELECT * FROM suppliers WHERE gst_number = :gstin"),
+                {"gstin": gstin}
+            ).first()
+            
+            if supplier:
+                extracted_data["supplier_exists"] = True
+                extracted_data["supplier_id"] = supplier.supplier_id
+                extracted_data["existing_supplier"] = {
+                    "supplier_id": supplier.supplier_id,
+                    "supplier_name": supplier.supplier_name,
+                    "address": supplier.address,
+                    "phone": supplier.phone,
+                    "drug_license_number": supplier.drug_license_number
+                }
+                return
+        
+        if name:
+            # Check by name
+            supplier = db.execute(
+                text("SELECT * FROM suppliers WHERE LOWER(supplier_name) LIKE LOWER(:name)"),
+                {"name": f"%{name}%"}
+            ).first()
+            
+            if supplier:
+                extracted_data["supplier_exists"] = True
+                extracted_data["supplier_match_type"] = "name"
+                extracted_data["supplier_id"] = supplier.supplier_id
+                extracted_data["existing_supplier"] = {
+                    "supplier_id": supplier.supplier_id,
+                    "supplier_name": supplier.supplier_name,
+                    "gst_number": supplier.gst_number,
+                    "address": supplier.address,
+                    "phone": supplier.phone,
+                    "drug_license_number": supplier.drug_license_number
+                }
+                return
+        
+        extracted_data["supplier_exists"] = False
+    except Exception as e:
+        logger.warning(f"Error checking supplier: {e}")
+
 @router.get("/version")
 def get_parser_version():
     """Check if custom parser is available"""
@@ -37,6 +89,72 @@ def get_parser_version():
         "version": "1.2",
         "module_imported": CUSTOM_PARSER_AVAILABLE
     }
+
+@router.get("/check-supplier")
+async def check_supplier(
+    gstin: Optional[str] = None,
+    name: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Check if supplier exists by GSTIN or name
+    """
+    try:
+        if gstin:
+            # First try exact GSTIN match
+            supplier = db.execute(
+                text("SELECT * FROM suppliers WHERE gst_number = :gstin"),
+                {"gstin": gstin}
+            ).first()
+            
+            if supplier:
+                return {
+                    "exists": True,
+                    "supplier": {
+                        "supplier_id": supplier.supplier_id,
+                        "supplier_name": supplier.supplier_name,
+                        "gst_number": supplier.gst_number,
+                        "address": supplier.address,
+                        "phone": supplier.phone,
+                        "email": supplier.email,
+                        "drug_license_number": supplier.drug_license_number
+                    }
+                }
+        
+        if name:
+            # Try fuzzy name match
+            supplier = db.execute(
+                text("""
+                    SELECT * FROM suppliers 
+                    WHERE LOWER(supplier_name) LIKE LOWER(:name)
+                    OR LOWER(supplier_name) LIKE LOWER(:partial_name)
+                """),
+                {
+                    "name": name,
+                    "partial_name": f"%{name}%"
+                }
+            ).first()
+            
+            if supplier:
+                return {
+                    "exists": True,
+                    "match_type": "name",
+                    "supplier": {
+                        "supplier_id": supplier.supplier_id,
+                        "supplier_name": supplier.supplier_name,
+                        "gst_number": supplier.gst_number,
+                        "address": supplier.address,
+                        "phone": supplier.phone,
+                        "email": supplier.email,
+                        "drug_license_number": supplier.drug_license_number
+                    }
+                }
+        
+        return {"exists": False}
+        
+    except Exception as e:
+        logger.error(f"Error checking supplier: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/parse-invoice-safe")
 async def parse_purchase_invoice_safe(
@@ -124,6 +242,9 @@ async def parse_purchase_invoice_safe(
                             if supplier_found:
                                 custom_result["extracted_data"]["supplier_name"] = invoice_data.supplier_name
                                 custom_result["extracted_data"]["supplier_gstin"] = invoice_data.supplier_gstin
+                            
+                            # Check for existing supplier
+                            _check_supplier_in_result(custom_result["extracted_data"], db)
                             return custom_result
                     except Exception as custom_err:
                         logger.warning(f"Custom parser failed: {custom_err}")
@@ -133,6 +254,8 @@ async def parse_purchase_invoice_safe(
                         response_data["message"] = f"Partial extraction: Found supplier '{invoice_data.supplier_name}' but no line items. Please add items manually."
                         response_data["partial_extraction"] = True
                 
+                # Check for existing supplier before returning
+                _check_supplier_in_result(response_data["extracted_data"], db)
                 return response_data
                 
             except Exception as parse_error:
@@ -144,6 +267,8 @@ async def parse_purchase_invoice_safe(
                         logger.info("Trying custom pharma parser as fallback...")
                         custom_result = parse_pharma_invoice(tmp_path)
                         if custom_result["success"]:
+                            # Check for existing supplier
+                            _check_supplier_in_result(custom_result["extracted_data"], db)
                             return custom_result
                     except Exception as custom_err:
                         logger.error(f"Custom parser also failed: {custom_err}")
@@ -320,6 +445,8 @@ async def parse_purchase_invoice(
                 else:
                     item["product_matched"] = False
             
+            # Check for existing supplier before returning
+            _check_supplier_in_result(response_data["extracted_data"], db)
             return response_data
             
         finally:
@@ -363,19 +490,20 @@ def create_purchase_from_parsed(
                 text("""
                     INSERT INTO suppliers (
                         org_id, supplier_code, supplier_name, 
-                        gst_number, address, phone, email
+                        gst_number, address, phone, email, drug_license_number
                     ) VALUES (
                         '12de5e22-eee7-4d25-b3a7-d16d01c6170f', -- Default org
-                        :code, :name, :gstin, :address, :phone, :email
+                        :code, :name, :gstin, :address, :phone, :email, :drug_license
                     ) RETURNING supplier_id
                 """),
                 {
                     "code": supplier_code,
                     "name": supplier_data.get("supplier_name"),
-                    "gstin": supplier_data.get("supplier_gstin"),
-                    "address": supplier_data.get("supplier_address"),
-                    "phone": supplier_data.get("phone"),
-                    "email": supplier_data.get("email")
+                    "gstin": supplier_data.get("supplier_gstin", supplier_data.get("gst_number")),
+                    "address": supplier_data.get("supplier_address", supplier_data.get("address")),
+                    "phone": supplier_data.get("phone", ""),
+                    "email": supplier_data.get("email", ""),
+                    "drug_license": supplier_data.get("drug_license_number", supplier_data.get("drug_license", ""))
                 }
             ).scalar()
         
