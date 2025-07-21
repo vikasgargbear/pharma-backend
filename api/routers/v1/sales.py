@@ -7,12 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 import uuid
 from pydantic import BaseModel, Field
 
 from ...database import get_db
+from ...services.gst_service import GSTService, GSTType
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +44,13 @@ class SaleCreate(BaseModel):
     party_gst: Optional[str] = None
     party_address: Optional[str] = None
     party_phone: Optional[str] = None
+    party_state_code: Optional[str] = None  # For parties without GSTIN
     payment_mode: str = "cash"  # cash, credit, card, upi
     items: List[SaleItemCreate]
     discount_amount: Optional[Decimal] = Decimal("0")
     other_charges: Optional[Decimal] = Decimal("0")
     notes: Optional[str] = None
+    seller_gstin: Optional[str] = None  # Organization GSTIN
     
 
 class SaleResponse(BaseModel):
@@ -60,7 +63,11 @@ class SaleResponse(BaseModel):
     subtotal_amount: Decimal
     discount_amount: Decimal
     tax_amount: Decimal
+    cgst_amount: Decimal
+    sgst_amount: Decimal
+    igst_amount: Decimal
     total_amount: Decimal
+    gst_type: str
     payment_mode: str
     sale_status: str
     created_at: datetime
@@ -75,109 +82,130 @@ async def create_direct_sale(
     Create a direct sale/cash sale with invoice
     """
     try:
-        # Generate sale ID and invoice number
-        sale_id = str(uuid.uuid4())
+        # Generate invoice number
         invoice_number = f"INV-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         
         # Use provided date or current date
         sale_date = sale_data.sale_date or date.today()
         
-        # Calculate totals
-        subtotal = Decimal("0")
-        tax_amount = Decimal("0")
-        
-        for item in sale_data.items:
-            item_total = item.quantity * item.unit_price
-            item_discount = item_total * item.discount_percent / 100
-            taxable_amount = item_total - item_discount
-            item_tax = taxable_amount * item.tax_percent / 100
+        # Get seller GSTIN (from request or organization default)
+        if not sale_data.seller_gstin:
+            org = db.execute(
+                text("SELECT gst_number FROM organizations WHERE organization_id = :org_id"),
+                {"org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f"}
+            ).first()
+            seller_gstin = org.gst_number if org else "27AABCU9603R1ZM"  # Default Maharashtra GSTIN
+        else:
+            seller_gstin = sale_data.seller_gstin
             
-            subtotal += item_total
-            tax_amount += item_tax
-            
-        # Apply overall discount
-        total_after_tax = subtotal + tax_amount - sale_data.discount_amount
-        final_total = total_after_tax + sale_data.other_charges
-        
-        # Create sale record
-        db.execute(
-            text("""
-                INSERT INTO sales (
-                    sale_id, org_id, invoice_number, sale_date,
-                    party_id, party_name, party_gst, party_address,
-                    party_phone, subtotal_amount, discount_amount,
-                    tax_amount, other_charges, grand_total,
-                    payment_mode, sale_status, notes
-                ) VALUES (
-                    :sale_id, :org_id, :invoice_number, :sale_date,
-                    :party_id, :party_name, :party_gst, :party_address,
-                    :party_phone, :subtotal, :discount, :tax,
-                    :other_charges, :total, :payment_mode, :status, :notes
-                )
-            """),
-            {
-                "sale_id": sale_id,
-                "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                "invoice_number": invoice_number,
-                "sale_date": sale_date,
-                "party_id": sale_data.party_id,
-                "party_name": sale_data.party_name,
-                "party_gst": sale_data.party_gst,
-                "party_address": sale_data.party_address,
-                "party_phone": sale_data.party_phone,
-                "subtotal": subtotal,
-                "discount": sale_data.discount_amount,
-                "tax": tax_amount,
-                "other_charges": sale_data.other_charges,
-                "total": final_total,
-                "payment_mode": sale_data.payment_mode,
-                "status": "completed",
-                "notes": sale_data.notes
-            }
+        # Determine GST type based on seller and buyer location
+        gst_type = GSTService.determine_gst_type(
+            seller_gstin=seller_gstin,
+            buyer_gstin=sale_data.party_gst,
+            buyer_state_code=sale_data.party_state_code  # For unregistered buyers
         )
         
-        # Create sale items
-        for item in sale_data.items:
-            item_total = item.quantity * item.unit_price
-            item_discount_amount = item_total * item.discount_percent / 100
-            taxable_amount = item_total - item_discount_amount
-            item_tax_amount = taxable_amount * item.tax_percent / 100
-            total_amount = taxable_amount + item_tax_amount
-            
+        # Calculate invoice with proper GST
+        invoice_calc = GSTService.calculate_invoice_gst(
+            invoice_data={
+                "items": [item.dict() for item in sale_data.items],
+                "discount_amount": sale_data.discount_amount,
+                "other_charges": sale_data.other_charges
+            },
+            seller_gstin=seller_gstin,
+            buyer_gstin=sale_data.party_gst
+        )
+        
+        # Extract calculated values
+        subtotal = invoice_calc["subtotal"]
+        total_discount = invoice_calc["total_discount"]
+        total_cgst = invoice_calc["cgst_amount"]
+        total_sgst = invoice_calc["sgst_amount"]
+        total_igst = invoice_calc["igst_amount"]
+        tax_amount = invoice_calc["total_tax"]
+        final_total = invoice_calc["grand_total"]
+        
+        # Create invoice record using existing invoices table
+        invoice_id = db.execute(
+            text("""
+                INSERT INTO invoices (
+                    invoice_number, invoice_date, due_date,
+                    order_id, customer_id, customer_name, customer_gstin,
+                    billing_address, shipping_address,
+                    subtotal_amount, discount_amount, taxable_amount,
+                    cgst_amount, sgst_amount, igst_amount,
+                    total_tax_amount, round_off_amount, total_amount,
+                    payment_status, payment_mode, notes,
+                    gst_type, place_of_supply
+                ) VALUES (
+                    :invoice_number, :invoice_date, :due_date,
+                    NULL, :customer_id, :customer_name, :customer_gstin,
+                    :billing_address, :shipping_address,
+                    :subtotal, :discount, :taxable,
+                    :cgst, :sgst, :igst,
+                    :tax_amount, :round_off, :total_amount,
+                    :payment_status, :payment_mode, :notes,
+                    :gst_type, :place_of_supply
+                )
+                RETURNING invoice_id
+            """),
+            {
+                "invoice_number": invoice_number,
+                "invoice_date": sale_date,
+                "due_date": sale_date + timedelta(days=30),  # 30 day payment terms
+                "customer_id": sale_data.party_id,
+                "customer_name": sale_data.party_name,
+                "customer_gstin": sale_data.party_gst,
+                "billing_address": sale_data.party_address,
+                "shipping_address": sale_data.party_address,
+                "subtotal": subtotal,
+                "discount": total_discount,
+                "taxable": subtotal - total_discount,
+                "cgst": total_cgst,
+                "sgst": total_sgst,
+                "igst": total_igst,
+                "tax_amount": tax_amount,
+                "round_off": round(final_total) - final_total,
+                "total_amount": final_total,
+                "payment_status": "paid" if sale_data.payment_mode == "cash" else "pending",
+                "payment_mode": sale_data.payment_mode,
+                "notes": sale_data.notes,
+                "gst_type": gst_type.value,
+                "place_of_supply": GSTService.get_state_name(GSTService.extract_state_code(sale_data.party_gst)) if sale_data.party_gst else None
+            }
+        ).scalar()
+        
+        # Create invoice items using calculated GST values
+        for idx, (item, calc_item) in enumerate(zip(sale_data.items, invoice_calc["items"])):
             db.execute(
                 text("""
-                    INSERT INTO sale_items (
-                        sale_item_id, sale_id, product_id, product_name,
-                        hsn_code, batch_id, batch_number, expiry_date,
-                        quantity, unit, unit_price, mrp,
+                    INSERT INTO invoice_items (
+                        invoice_id, product_id, product_name,
+                        quantity, unit_price, 
                         discount_percent, discount_amount,
-                        tax_percent, tax_amount, total_amount
+                        tax_percent, cgst_amount, sgst_amount, igst_amount,
+                        line_total
                     ) VALUES (
-                        :item_id, :sale_id, :product_id, :product_name,
-                        :hsn, :batch_id, :batch_number, :expiry,
-                        :quantity, :unit, :unit_price, :mrp,
+                        :invoice_id, :product_id, :product_name,
+                        :quantity, :unit_price,
                         :disc_percent, :disc_amount,
-                        :tax_percent, :tax_amount, :total
+                        :tax_percent, :cgst_amt, :sgst_amt, :igst_amt,
+                        :total
                     )
                 """),
                 {
-                    "item_id": str(uuid.uuid4()),
-                    "sale_id": sale_id,
+                    "invoice_id": invoice_id,
                     "product_id": item.product_id,
                     "product_name": item.product_name,
-                    "hsn": item.hsn_code,
-                    "batch_id": item.batch_id,
-                    "batch_number": item.batch_number,
-                    "expiry": item.expiry_date,
-                    "quantity": item.quantity,
-                    "unit": item.unit,
-                    "unit_price": item.unit_price,
-                    "mrp": item.mrp,
-                    "disc_percent": item.discount_percent,
-                    "disc_amount": item_discount_amount,
-                    "tax_percent": item.tax_percent,
-                    "tax_amount": item_tax_amount,
-                    "total": total_amount
+                    "quantity": calc_item["quantity"],
+                    "unit_price": calc_item["unit_price"],
+                    "disc_percent": calc_item["discount_percent"],
+                    "disc_amount": calc_item["discount_amount"],
+                    "tax_percent": calc_item["gst_rate"],
+                    "cgst_amt": calc_item["cgst_amount"],
+                    "sgst_amt": calc_item["sgst_amount"],
+                    "igst_amt": calc_item["igst_amount"],
+                    "total": calc_item["total_amount"]
                 }
             )
             
@@ -220,7 +248,7 @@ async def create_direct_sale(
                         debit_amount, credit_amount, description
                     ) VALUES (
                         :ledger_id, :org_id, :party_id, :date,
-                        'debit', 'sale', :sale_id,
+                        'debit', 'invoice', :invoice_id,
                         :amount, 0, :description
                     )
                 """),
@@ -229,7 +257,7 @@ async def create_direct_sale(
                     "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
                     "party_id": sale_data.party_id,
                     "date": sale_date,
-                    "sale_id": sale_id,
+                    "invoice_id": str(invoice_id),
                     "amount": final_total,
                     "description": f"Sale Invoice - {invoice_number}"
                 }
@@ -238,15 +266,19 @@ async def create_direct_sale(
         db.commit()
         
         return SaleResponse(
-            sale_id=sale_id,
+            sale_id=str(invoice_id),  # Using invoice_id as sale_id
             invoice_number=invoice_number,
             sale_date=sale_date,
             party_id=sale_data.party_id,
             party_name=sale_data.party_name,
             subtotal_amount=subtotal,
-            discount_amount=sale_data.discount_amount,
+            discount_amount=total_discount,
             tax_amount=tax_amount,
+            cgst_amount=total_cgst,
+            sgst_amount=total_sgst,
+            igst_amount=total_igst,
             total_amount=final_total,
+            gst_type=gst_type.value,
             payment_mode=sale_data.payment_mode,
             sale_status="completed",
             created_at=datetime.now()
@@ -269,43 +301,45 @@ async def get_sales(
     db: Session = Depends(get_db)
 ):
     """
-    Get list of sales with optional filters
+    Get list of direct sales/invoices (without orders)
     """
     try:
         query = """
-            SELECT s.*, p.party_name, p.gst_number as party_gst
-            FROM sales s
-            LEFT JOIN parties p ON s.party_id = p.party_id
-            WHERE s.org_id = :org_id
+            SELECT i.invoice_id as sale_id, i.invoice_number, i.invoice_date as sale_date,
+                   i.customer_id as party_id, i.customer_name as party_name, 
+                   i.customer_gstin as party_gst, i.total_amount, i.payment_status,
+                   i.payment_mode, i.cgst_amount, i.sgst_amount, i.igst_amount,
+                   i.gst_type, i.created_at
+            FROM invoices i
+            WHERE i.order_id IS NULL  -- Direct sales without orders
         """
         params = {
-            "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
             "skip": skip,
             "limit": limit
         }
         
         if party_id:
-            query += " AND s.party_id = :party_id"
+            query += " AND i.customer_id = :party_id"
             params["party_id"] = party_id
             
         if from_date:
-            query += " AND s.sale_date >= :from_date"
+            query += " AND i.invoice_date >= :from_date"
             params["from_date"] = from_date
             
         if to_date:
-            query += " AND s.sale_date <= :to_date"
+            query += " AND i.invoice_date <= :to_date"
             params["to_date"] = to_date
             
         if payment_mode:
-            query += " AND s.payment_mode = :payment_mode"
+            query += " AND i.payment_mode = :payment_mode"
             params["payment_mode"] = payment_mode
             
-        query += " ORDER BY s.sale_date DESC, s.created_at DESC LIMIT :limit OFFSET :skip"
+        query += " ORDER BY i.invoice_date DESC, i.created_at DESC LIMIT :limit OFFSET :skip"
         
         sales = db.execute(text(query), params).fetchall()
         
         # Get count
-        count_query = query.replace("SELECT s.*, p.party_name, p.gst_number as party_gst", "SELECT COUNT(*)")
+        count_query = query.replace("SELECT i.invoice_id as sale_id, i.invoice_number", "SELECT COUNT(*)")
         count_query = count_query.split("ORDER BY")[0]
         total = db.execute(text(count_query), params).scalar()
         
@@ -328,14 +362,18 @@ async def get_sale_detail(
     Get detailed sale information including items
     """
     try:
-        # Get sale
+        # Get invoice (treating invoice_id as sale_id for direct sales)
         sale = db.execute(
             text("""
-                SELECT s.*, p.party_name, p.gst_number as party_gst,
-                       p.address as party_address, p.phone as party_phone
-                FROM sales s
-                LEFT JOIN parties p ON s.party_id = p.party_id
-                WHERE s.sale_id = :sale_id
+                SELECT i.invoice_id as sale_id, i.invoice_number, i.invoice_date as sale_date,
+                       i.customer_id as party_id, i.customer_name as party_name,
+                       i.customer_gstin as party_gst, i.billing_address as party_address,
+                       i.total_amount, i.subtotal_amount, i.discount_amount,
+                       i.cgst_amount, i.sgst_amount, i.igst_amount,
+                       i.gst_type, i.payment_mode, i.payment_status as sale_status,
+                       i.notes, i.created_at
+                FROM invoices i
+                WHERE i.invoice_id = :sale_id::int
             """),
             {"sale_id": sale_id}
         ).first()
@@ -346,10 +384,10 @@ async def get_sale_detail(
         # Get items
         items = db.execute(
             text("""
-                SELECT si.*, p.product_name, p.hsn_code
-                FROM sale_items si
-                LEFT JOIN products p ON si.product_id = p.product_id
-                WHERE si.sale_id = :sale_id
+                SELECT ii.*, p.product_name, p.hsn_code
+                FROM invoice_items ii
+                LEFT JOIN products p ON ii.product_id = p.product_id
+                WHERE ii.invoice_id = :sale_id::int
             """),
             {"sale_id": sale_id}
         ).fetchall()
