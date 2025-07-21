@@ -23,6 +23,7 @@ from .purchase_returns import router as purchase_returns_router
 from .stock_movements import router as stock_movements_router
 from .party_ledger import router as party_ledger_router
 from .credit_debit_notes import router as credit_debit_notes_router
+from .sales import router as sales_router
 
 __all__ = [
     "customers_router", 
@@ -46,5 +47,6 @@ __all__ = [
     "purchase_returns_router",
     "stock_movements_router",
     "party_ledger_router",
-    "credit_debit_notes_router"
+    "credit_debit_notes_router",
+    "sales_router"
 ]

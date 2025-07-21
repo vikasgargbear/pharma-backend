@@ -46,7 +46,7 @@ from .routers.v1 import (
     sales_returns_router, stock_adjustments_router, tax_entries_router,
     purchase_upload_router, purchase_enhanced_router, sale_returns_api_router,
     purchase_returns_router, stock_movements_router, party_ledger_router,
-    credit_debit_notes_router
+    credit_debit_notes_router, sales_router
 )
 
 # Configure Sentry for error tracking
@@ -213,6 +213,7 @@ app.include_router(purchase_returns_router)
 app.include_router(stock_movements_router)
 app.include_router(party_ledger_router)
 app.include_router(credit_debit_notes_router)
+app.include_router(sales_router)
 
 # Request timing middleware
 @app.middleware("http")
