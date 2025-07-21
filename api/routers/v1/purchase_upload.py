@@ -17,6 +17,13 @@ from ...database import get_db
 from bill_parser import parse_pdf
 from bill_parser.models import Invoice, InvoiceItem
 
+# Try to import custom parser at module level
+try:
+    from .pharma_invoice_parser import parse_pharma_invoice
+    CUSTOM_PARSER_AVAILABLE = True
+except ImportError:
+    CUSTOM_PARSER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/purchase-upload", tags=["purchase-upload"])
@@ -24,11 +31,12 @@ router = APIRouter(prefix="/api/v1/purchase-upload", tags=["purchase-upload"])
 @router.get("/version")
 def get_parser_version():
     """Check if custom parser is available"""
-    try:
-        from .pharma_invoice_parser import parse_pharma_invoice
-        return {"status": "ok", "custom_parser": "available", "version": "1.1"}
-    except Exception as e:
-        return {"status": "error", "custom_parser": "not found", "error": str(e)}
+    return {
+        "status": "ok", 
+        "custom_parser": "available" if CUSTOM_PARSER_AVAILABLE else "not found",
+        "version": "1.2",
+        "module_imported": CUSTOM_PARSER_AVAILABLE
+    }
 
 @router.post("/parse-invoice-safe")
 async def parse_purchase_invoice_safe(
@@ -105,10 +113,9 @@ async def parse_purchase_invoice_safe(
                             continue
                 
                 # If no items found, try our custom parser
-                if not items_found:
+                if not items_found and CUSTOM_PARSER_AVAILABLE:
                     logger.info("Bill parser found no items, trying custom pharma parser...")
                     try:
-                        from .pharma_invoice_parser import parse_pharma_invoice
                         custom_result = parse_pharma_invoice(tmp_path)
                         
                         if custom_result["success"] and custom_result["extracted_data"]["items"]:
@@ -130,6 +137,16 @@ async def parse_purchase_invoice_safe(
                 
             except Exception as parse_error:
                 logger.warning(f"Bill parser failed: {parse_error}")
+                
+                # Try our custom parser before giving up
+                if CUSTOM_PARSER_AVAILABLE:
+                    try:
+                        logger.info("Trying custom pharma parser as fallback...")
+                        custom_result = parse_pharma_invoice(tmp_path)
+                        if custom_result["success"]:
+                            return custom_result
+                    except Exception as custom_err:
+                        logger.error(f"Custom parser also failed: {custom_err}")
                 
                 # Fallback: Return template for manual entry
                 return {
