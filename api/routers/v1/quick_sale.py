@@ -77,8 +77,10 @@ async def create_quick_sale(
         
         # Step 1: Validate customer
         customer = db.execute(text("""
-            SELECT customer_id, customer_name, gst_number as gstin, state, 
-                   state_code, credit_period_days as credit_days, address, city, pincode
+            SELECT customer_id, customer_name, 
+                   COALESCE(gstin, gst_number) as gstin, state, 
+                   state_code, credit_period_days as credit_days, 
+                   address, city, pincode
             FROM customers
             WHERE customer_id = :customer_id AND org_id = :org_id
         """), {
@@ -311,17 +313,18 @@ async def create_quick_sale(
             db.execute(text("""
                 INSERT INTO invoice_payments (
                     payment_reference, invoice_id,
-                    payment_date, payment_mode, payment_amount,
+                    payment_date, payment_mode, amount, payment_amount,
                     notes
                 ) VALUES (
                     :payment_reference, :invoice_id,
-                    CURRENT_DATE, :payment_mode, :payment_amount,
+                    CURRENT_DATE, :payment_mode, :amount, :payment_amount,
                     'Quick sale payment'
                 )
             """), {
                 "payment_reference": f"PAY-{invoice_number}",
                 "invoice_id": invoice_id,
                 "payment_mode": sale.payment_mode.lower(),
+                "amount": float(payment_amount),
                 "payment_amount": float(payment_amount)
             })
             
