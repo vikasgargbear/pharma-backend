@@ -138,13 +138,13 @@ async def create_quick_sale(
         
         order_result = db.execute(text("""
             INSERT INTO orders (
-                org_id, customer_id, order_number, order_type, order_status,
+                org_id, customer_id, customer_name, customer_phone, order_number, order_type, order_status,
                 order_date, delivery_date,
                 subtotal_amount, discount_amount, tax_amount, final_amount,
                 paid_amount, payment_mode, payment_status,
                 notes, created_at, updated_at
             ) VALUES (
-                :org_id, :customer_id, :order_number, 'sales', 'confirmed',
+                :org_id, :customer_id, :customer_name, :customer_phone, :order_number, 'sales', 'confirmed',
                 CURRENT_DATE, CURRENT_DATE,
                 0, :discount_amount, 0, 0,
                 0, :payment_mode, 'pending',
@@ -153,6 +153,8 @@ async def create_quick_sale(
         """), {
             "org_id": org_id,
             "customer_id": sale.customer_id,
+            "customer_name": customer.customer_name,
+            "customer_phone": getattr(customer, 'phone', None),
             "order_number": order_number,
             "discount_amount": float(sale.discount_amount or 0),
             "payment_mode": sale.payment_mode.lower(),

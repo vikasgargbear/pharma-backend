@@ -47,7 +47,7 @@ from .routers.v1 import (
     sales_returns_router, stock_adjustments_router, tax_entries_router,
     purchase_upload_router, purchase_enhanced_router, sale_returns_api_router,
     purchase_returns_router, stock_movements_router, party_ledger_router,
-    credit_debit_notes_router, sales_router
+    credit_debit_notes_router, sales_router, enterprise_orders_router
 )
 from .routers.v1.stock_receive import router as stock_receive_router
 from .routers.v1.direct_invoice import router as direct_invoice_router
@@ -220,11 +220,12 @@ app.include_router(stock_movements_router)
 app.include_router(party_ledger_router)
 app.include_router(credit_debit_notes_router)
 app.include_router(sales_router)
+app.include_router(enterprise_orders_router)  # 🚀 NEW: Enterprise-grade order API
 app.include_router(stock_receive_router)
 app.include_router(direct_invoice_router)
 app.include_router(invoice_with_order_router)
 app.include_router(smart_invoice_router)
-app.include_router(quick_sale_router)
+# app.include_router(quick_sale_router)  # DEPRECATED: Use enterprise_orders_router instead
 
 # Debug router (only in debug mode)
 if settings.DEBUG:
