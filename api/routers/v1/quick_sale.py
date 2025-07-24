@@ -300,7 +300,7 @@ async def create_quick_sale(
             "igst_amount": float(igst_amount),
             "total_tax_amount": float(total_tax),
             "total_amount": float(final_amount),
-            "invoice_status": "paid" if sale.payment_mode == "Cash" else "unpaid"
+            "invoice_status": "paid" if sale.payment_mode.lower() == "cash" else "generated"
         })
         
         invoice_id = invoice_result.scalar()
