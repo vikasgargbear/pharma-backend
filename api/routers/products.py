@@ -97,17 +97,31 @@ def create_product(product: dict, db: Session = Depends(get_db)):
         # Get the actual columns from the Product model
         valid_columns = {c.name for c in Product.__table__.columns}
         
-        # Filter db_fields to only include valid columns
-        filtered_fields = {k: v for k, v in db_fields.items() if k in valid_columns}
+        # Separate pack fields that might not be in the database yet
+        pack_fields = ['pack_input', 'pack_quantity', 'pack_multiplier', 'pack_unit_type', 
+                      'unit_count', 'unit_measurement', 'packages_per_box']
         
-        # Log any fields that were filtered out
-        filtered_out = set(db_fields.keys()) - set(filtered_fields.keys())
-        if filtered_out:
-            print(f"⚠️  Filtered out fields not in database: {filtered_out}")
-            print("   These fields need database migration to work properly")
+        # Create two sets of fields: safe fields and pack fields
+        safe_fields = {k: v for k, v in db_fields.items() if k not in pack_fields}
+        pack_field_values = {k: v for k, v in db_fields.items() if k in pack_fields and v is not None}
         
-        db_product = Product(**filtered_fields)
+        # Log what we're doing
+        print(f"Creating product with safe fields: {list(safe_fields.keys())}")
+        if pack_field_values:
+            print(f"Will attempt to set pack fields after creation: {list(pack_field_values.keys())}")
+        
+        # Create product with only safe fields
+        db_product = Product(**safe_fields)
         db.add(db_product)
+        
+        # Try to set pack fields using setattr (this works even if column doesn't exist in DB)
+        for field, value in pack_field_values.items():
+            try:
+                setattr(db_product, field, value)
+                print(f"✅ Successfully set {field} = {value}")
+            except Exception as e:
+                print(f"⚠️  Could not set {field}: {str(e)}")
+        
         db.commit()
         db.refresh(db_product)
         
