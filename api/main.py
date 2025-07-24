@@ -263,50 +263,50 @@ async def database_error_handler(request: Request, call_next):
             # Re-raise non-database errors
             raise
 
-# Audit logging middleware 
-@app.middleware("http") 
-async def audit_middleware(request: Request, call_next):
-    """Audit logging middleware"""
-    try:
-        from .core.audit import AuditLogger
-    except ImportError:
-        from core.audit import AuditLogger
-    
-    start_time = time.time()
-    
-    try:
-        response = await call_next(request)
-        execution_time = time.time() - start_time
-        
-        # Log API access
-        AuditLogger.log_api_access(
-            request=request,
-            response_status=response.status_code,
-            execution_time=execution_time
-        )
-        
-        return response
-        
-    except Exception as e:
-        execution_time = time.time() - start_time
-        
-        # Log failed requests
-        AuditLogger.log_api_access(
-            request=request,
-            response_status=500,
-            execution_time=execution_time
-        )
-        
-        # Log security events for suspicious patterns
-        if any(pattern in str(request.url).lower() for pattern in ['admin', 'config', '.env', 'password']):
-            AuditLogger.log_security_event(
-                event="suspicious_request",
-                description=f"Suspicious request pattern: {request.url}",
-                ip_address=request.client.host,
-                severity="high"
-            )
-        
-        raise
+# Audit logging middleware - TEMPORARILY DISABLED DUE TO STREAMING ISSUE
+# @app.middleware("http") 
+# async def audit_middleware(request: Request, call_next):
+#     """Audit logging middleware"""
+#     try:
+#         from .core.audit import AuditLogger
+#     except ImportError:
+#         from core.audit import AuditLogger
+#     
+#     start_time = time.time()
+#     
+#     try:
+#         response = await call_next(request)
+#         execution_time = time.time() - start_time
+#         
+#         # Log API access
+#         AuditLogger.log_api_access(
+#             request=request,
+#             response_status=response.status_code,
+#             execution_time=execution_time
+#         )
+#         
+#         return response
+#         
+#     except Exception as e:
+#         execution_time = time.time() - start_time
+#         
+#         # Log failed requests
+#         AuditLogger.log_api_access(
+#             request=request,
+#             response_status=500,
+#             execution_time=execution_time
+#         )
+#         
+#         # Log security events for suspicious patterns
+#         if any(pattern in str(request.url).lower() for pattern in ['admin', 'config', '.env', 'password']):
+#             AuditLogger.log_security_event(
+#                 event="suspicious_request",
+#                 description=f"Suspicious request pattern: {request.url}",
+#                 ip_address=request.client.host,
+#                 severity="high"
+#             )
+#         
+#         raise
 
 # Global exception handlers
 @app.exception_handler(RequestValidationError)

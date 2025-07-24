@@ -83,10 +83,13 @@ async def create_enterprise_order(
             }
         )
     except Exception as e:
+        import traceback
         logger.error(f"Unexpected error creating enterprise order: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Return more detailed error for debugging
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+            detail=f"{str(e)}"
         )
 
 # Backwards compatibility - maps old quick-sale format to new enterprise format
