@@ -413,10 +413,28 @@ async def calculate_invoice_totals(
         
         # Calculate totals for each item
         for item in request.items:
-            quantity = Decimal(str(item.get("quantity", 0)))
+            # Get product details if rate not provided
+            product_id = item.get("product_id")
             rate = Decimal(str(item.get("rate", 0) or item.get("sale_price", 0) or item.get("unit_price", 0)))
+            
+            if rate == 0 and product_id:
+                # Fetch product price from database
+                product = db.execute(text("""
+                    SELECT sale_price, mrp, gst_percent 
+                    FROM products 
+                    WHERE product_id = :product_id
+                """), {"product_id": product_id}).first()
+                
+                if product:
+                    rate = Decimal(str(product.sale_price or product.mrp or 0))
+                    gst_percent = Decimal(str(product.gst_percent or 12))
+                else:
+                    gst_percent = Decimal("12")
+            else:
+                gst_percent = Decimal(str(item.get("gst_percent", 12) or item.get("tax_rate", 12) or 12))
+            
+            quantity = Decimal(str(item.get("quantity", 0)))
             discount_percent = Decimal(str(item.get("discount_percent", 0) or item.get("discount", 0)))
-            gst_percent = Decimal(str(item.get("gst_percent", 12) or item.get("tax_rate", 12) or 12))
             
             line_total = quantity * rate
             discount_amount = line_total * discount_percent / 100
