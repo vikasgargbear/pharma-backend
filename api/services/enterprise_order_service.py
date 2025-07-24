@@ -673,7 +673,7 @@ class EnterpriseOrderService:
         timestamp = datetime.now()
         today_prefix = f"ORD{timestamp.strftime('%Y%m%d')}"
         
-        # Get next sequence number with lock
+        # Get max order number for today without FOR UPDATE (not allowed with aggregate)
         result = self.db.execute(text("""
             SELECT COALESCE(MAX(
                 CASE 
@@ -685,7 +685,6 @@ class EnterpriseOrderService:
             FROM orders 
             WHERE org_id = :org_id 
             AND order_number LIKE :prefix
-            FOR UPDATE
         """), {
             "org_id": self.org_id,
             "pattern": f"^{today_prefix}[0-9]+$",
@@ -694,7 +693,10 @@ class EnterpriseOrderService:
         }).first()
         
         seq_num = result.next_seq if result else 1
-        return f"{today_prefix}{seq_num:06d}"
+        
+        # Add microseconds to ensure uniqueness in concurrent requests
+        unique_suffix = timestamp.strftime('%f')[:3]  # First 3 digits of microseconds
+        return f"{today_prefix}{seq_num:04d}{unique_suffix}"
     
     def _create_comprehensive_order_record(self, customer: CustomerInfo, 
                                          order_number: str, totals: Dict, 
@@ -857,7 +859,6 @@ class EnterpriseOrderService:
                 ORDER BY 
                     CASE WHEN expiry_date IS NULL THEN '9999-12-31'::date ELSE expiry_date END ASC,
                     batch_id ASC
-                FOR UPDATE
             """)
             
             batches = self.db.execute(batches_query, {
