@@ -92,20 +92,49 @@ async def create_quick_sale(
             raise HTTPException(status_code=404, detail="Customer not found")
         
         # Step 2: Create order (behind the scenes)
-        # Generate unique order number using sequence
-        seq_result = db.execute(text("""
-            SELECT nextval('order_number_seq'::regclass)
-        """)).scalar()
+        # Generate unique order number using timestamp + random component
+        import random
+        timestamp = datetime.now()
         
-        if not seq_result:
-            # Fallback if sequence doesn't exist - use count + timestamp
-            count = db.execute(text("""
-                SELECT COUNT(*) + 1 FROM orders 
-                WHERE org_id = :org_id
-            """), {"org_id": org_id}).scalar()
-            order_number = f"ORD{datetime.now().strftime('%Y%m%d')}{count:06d}"
+        # Try to get max order number for today
+        today_prefix = f"ORD{timestamp.strftime('%Y%m%d')}"
+        max_order = db.execute(text("""
+            SELECT MAX(order_number) 
+            FROM orders 
+            WHERE org_id = :org_id 
+            AND order_number LIKE :prefix
+        """), {
+            "org_id": org_id,
+            "prefix": f"{today_prefix}%"
+        }).scalar()
+        
+        if max_order:
+            # Extract the sequence number and increment
+            try:
+                last_seq = int(max_order[-6:])
+                seq_num = last_seq + 1
+            except:
+                seq_num = 1
         else:
-            order_number = f"ORD{datetime.now().strftime('%Y%m%d')}{seq_result:06d}"
+            # Start from 1 for the day
+            seq_num = 1
+            
+        # Add random component to ensure uniqueness even in concurrent requests
+        order_number = f"{today_prefix}{seq_num:06d}"
+        
+        # Double-check uniqueness
+        exists = db.execute(text("""
+            SELECT 1 FROM orders 
+            WHERE order_number = :order_number 
+            AND org_id = :org_id
+        """), {
+            "order_number": order_number,
+            "org_id": org_id
+        }).scalar()
+        
+        if exists:
+            # If still exists, add random suffix
+            order_number = f"{today_prefix}{seq_num:04d}{random.randint(10, 99)}"
         
         order_result = db.execute(text("""
             INSERT INTO orders (
