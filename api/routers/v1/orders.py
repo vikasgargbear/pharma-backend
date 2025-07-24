@@ -41,9 +41,12 @@ async def create_order(
     - Allocates inventory using FIFO
     """
     try:
+        # Set org_id early
+        org_id = order.org_id if order.org_id else DEFAULT_ORG_ID
+        
         # Validate customer exists and has credit
         credit_check = CustomerService.validate_credit_limit(
-            db, order.customer_id, Decimal("0")  # Will calculate actual amount
+            db, order.customer_id, Decimal("0"), org_id  # Will calculate actual amount
         )
         
         if not credit_check["valid"] and credit_check.get("message") == "Customer not found":
@@ -51,7 +54,7 @@ async def create_order(
         
         # Validate inventory for all items
         items_dict = [item.dict() for item in order.items]
-        inventory_check = OrderService.validate_inventory(db, items_dict)
+        inventory_check = OrderService.validate_inventory(db, items_dict, org_id)
         
         if not inventory_check["valid"]:
             failed_items = [
@@ -68,8 +71,8 @@ async def create_order(
         customer = db.execute(text("""
             SELECT customer_name, phone, discount_percent 
             FROM customers 
-            WHERE customer_id = :id
-        """), {"id": order.customer_id}).fetchone()
+            WHERE customer_id = :id AND org_id = :org_id
+        """), {"id": order.customer_id, "org_id": org_id}).fetchone()
         
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
@@ -77,19 +80,19 @@ async def create_order(
         customer_discount = customer.discount_percent or Decimal("0")
         
         totals = OrderService.calculate_order_totals(
-            db, items_dict, customer_discount
+            db, items_dict, customer_discount, org_id
         )
         
         # Check credit limit with actual amount
         credit_check = CustomerService.validate_credit_limit(
-            db, order.customer_id, totals["total"]
+            db, order.customer_id, totals["total"], org_id
         )
         
         if not credit_check["valid"]:
             raise HTTPException(status_code=400, detail=credit_check["message"])
         
         # Generate order number
-        order_number = OrderService.generate_order_number(db)
+        order_number = OrderService.generate_order_number(db, org_id)
         
         # Create order
         order_data = order.dict(exclude={"items"})
@@ -110,6 +113,10 @@ async def create_order(
             "created_at": datetime.now(),
             "updated_at": datetime.now()
         })
+        
+        # Ensure org_id is set (critical for multi-tenant queries)
+        if "org_id" not in order_data:
+            order_data["org_id"] = DEFAULT_ORG_ID
         
         # Ensure payment_terms has a value (it might be None even with schema default)
         if not order_data.get("payment_terms"):
@@ -159,7 +166,7 @@ async def create_order(
             """), item_data)
         
         # Allocate inventory
-        OrderService.allocate_inventory(db, order_id, items_dict)
+        OrderService.allocate_inventory(db, order_id, items_dict, org_id)
         
         db.commit()
         

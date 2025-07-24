@@ -40,20 +40,34 @@ class CustomerService:
         return f"{prefix}{next_num:04d}"
     
     @staticmethod
-    def validate_credit_limit(db: Session, customer_id: int, order_amount: Decimal) -> Dict[str, Any]:
+    def validate_credit_limit(db: Session, customer_id: int, order_amount: Decimal, org_id: UUID = None) -> Dict[str, Any]:
         """Check if customer has sufficient credit limit"""
         # Get customer details with outstanding
-        result = db.execute(text("""
-            SELECT 
-                c.credit_limit,
-                c.credit_days,
-                COALESCE(SUM(o.final_amount - o.paid_amount), 0) as outstanding
-            FROM customers c
-            LEFT JOIN orders o ON c.customer_id = o.customer_id
-                AND o.order_status NOT IN ('cancelled', 'draft')
-            WHERE c.customer_id = :customer_id
-            GROUP BY c.customer_id, c.credit_limit, c.credit_days
-        """), {"customer_id": customer_id})
+        if org_id:
+            result = db.execute(text("""
+                SELECT 
+                    c.credit_limit,
+                    c.credit_days,
+                    COALESCE(SUM(o.final_amount - o.paid_amount), 0) as outstanding
+                FROM customers c
+                LEFT JOIN orders o ON c.customer_id = o.customer_id
+                    AND o.order_status NOT IN ('cancelled', 'draft')
+                    AND o.org_id = c.org_id
+                WHERE c.customer_id = :customer_id AND c.org_id = :org_id
+                GROUP BY c.customer_id, c.credit_limit, c.credit_days
+            """), {"customer_id": customer_id, "org_id": org_id})
+        else:
+            result = db.execute(text("""
+                SELECT 
+                    c.credit_limit,
+                    c.credit_days,
+                    COALESCE(SUM(o.final_amount - o.paid_amount), 0) as outstanding
+                FROM customers c
+                LEFT JOIN orders o ON c.customer_id = o.customer_id
+                    AND o.order_status NOT IN ('cancelled', 'draft')
+                WHERE c.customer_id = :customer_id
+                GROUP BY c.customer_id, c.credit_limit, c.credit_days
+            """), {"customer_id": customer_id})
         
         row = result.fetchone()
         if not row:

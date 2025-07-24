@@ -21,24 +21,24 @@ class OrderService:
     """Service class for order-related business logic"""
     
     @staticmethod
-    def generate_order_number(db: Session) -> str:
+    def generate_order_number(db: Session, org_id: UUID) -> str:
         """Generate unique order number"""
         # Format: ORD-YYYYMMDD-XXXX
         today = date.today()
         prefix = f"ORD-{today.strftime('%Y%m%d')}"
         
-        # Get the next sequence number for today
+        # Get the next sequence number for today for this org
         result = db.execute(text("""
             SELECT COUNT(*) + 1 as next_num
             FROM orders
-            WHERE order_number LIKE :prefix || '%'
-        """), {"prefix": prefix})
+            WHERE order_number LIKE :prefix || '%' AND org_id = :org_id
+        """), {"prefix": prefix, "org_id": org_id})
         
         next_num = result.scalar() or 1
         return f"{prefix}-{next_num:04d}"
     
     @staticmethod
-    def validate_inventory(db: Session, items: List[dict]) -> Dict[str, Any]:
+    def validate_inventory(db: Session, items: List[dict], org_id: UUID) -> Dict[str, Any]:
         """Validate if items are available in inventory"""
         validation_results = []
         all_valid = True
@@ -48,8 +48,8 @@ class OrderService:
             product = db.execute(text("""
                 SELECT product_id, product_name, is_active
                 FROM products
-                WHERE product_id = :product_id
-            """), {"product_id": item['product_id']}).fetchone()
+                WHERE product_id = :product_id AND org_id = :org_id
+            """), {"product_id": item['product_id'], "org_id": org_id}).fetchone()
             
             if not product:
                 validation_results.append({
@@ -74,10 +74,11 @@ class OrderService:
                 batch = db.execute(text("""
                     SELECT batch_id, batch_number, quantity_available, expiry_date
                     FROM batches
-                    WHERE batch_id = :batch_id AND product_id = :product_id
+                    WHERE batch_id = :batch_id AND product_id = :product_id AND org_id = :org_id
                 """), {
                     "batch_id": item['batch_id'],
-                    "product_id": item['product_id']
+                    "product_id": item['product_id'],
+                    "org_id": org_id
                 }).fetchone()
                 
                 if not batch:
@@ -112,9 +113,9 @@ class OrderService:
                 stock = db.execute(text("""
                     SELECT COALESCE(SUM(quantity_available), 0) as total_stock
                     FROM batches
-                    WHERE product_id = :product_id
+                    WHERE product_id = :product_id AND org_id = :org_id
                         AND (expiry_date IS NULL OR expiry_date > CURRENT_DATE)
-                """), {"product_id": item['product_id']}).scalar()
+                """), {"product_id": item['product_id'], "org_id": org_id}).scalar()
                 
                 if stock < item['quantity']:
                     validation_results.append({
@@ -137,7 +138,7 @@ class OrderService:
         }
     
     @staticmethod
-    def calculate_order_totals(db: Session, items: List[dict], customer_discount: Decimal = Decimal("0")) -> Dict[str, Decimal]:
+    def calculate_order_totals(db: Session, items: List[dict], customer_discount: Decimal = Decimal("0"), org_id: UUID = None) -> Dict[str, Decimal]:
         """Calculate order totals with tax"""
         subtotal = Decimal("0")
         total_discount = Decimal("0")
@@ -145,11 +146,19 @@ class OrderService:
         
         for item in items:
             # Get product details
-            product = db.execute(text("""
-                SELECT mrp, gst_percent
-                FROM products
-                WHERE product_id = :product_id
-            """), {"product_id": item['product_id']}).fetchone()
+            query_params = {"product_id": item['product_id']}
+            if org_id:
+                product = db.execute(text("""
+                    SELECT mrp, gst_percent
+                    FROM products
+                    WHERE product_id = :product_id AND org_id = :org_id
+                """), {"product_id": item['product_id'], "org_id": org_id}).fetchone()
+            else:
+                product = db.execute(text("""
+                    SELECT mrp, gst_percent
+                    FROM products
+                    WHERE product_id = :product_id
+                """), {"product_id": item['product_id']}).fetchone()
             
             if product:
                 quantity = Decimal(str(item['quantity']))
@@ -185,7 +194,7 @@ class OrderService:
         }
     
     @staticmethod
-    def allocate_inventory(db: Session, order_id: int, items: List[dict]) -> bool:
+    def allocate_inventory(db: Session, order_id: int, items: List[dict], org_id: UUID) -> bool:
         """Allocate inventory for order items using FIFO"""
         try:
             for item in items:
@@ -207,15 +216,16 @@ class OrderService:
                     # Record inventory movement
                     db.execute(text("""
                         INSERT INTO inventory_movements (
-                            product_id, batch_id, movement_type, movement_date,
+                            org_id, product_id, batch_id, movement_type, movement_date,
                             quantity_out, reference_type, reference_id,
                             created_at, updated_at
                         ) VALUES (
-                            :product_id, :batch_id, 'sale', CURRENT_DATE,
+                            :org_id, :product_id, :batch_id, 'sale', CURRENT_DATE,
                             :quantity_out, 'order', :order_id,
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                         )
                     """), {
+                        "org_id": org_id,
                         "product_id": item['product_id'],
                         "batch_id": item['batch_id'],
                         "quantity_out": item['quantity'],
@@ -226,11 +236,11 @@ class OrderService:
                     batches = db.execute(text("""
                         SELECT batch_id, quantity_available
                         FROM batches
-                        WHERE product_id = :product_id
+                        WHERE product_id = :product_id AND org_id = :org_id
                             AND quantity_available > 0
                             AND (expiry_date IS NULL OR expiry_date > CURRENT_DATE)
                         ORDER BY expiry_date NULLS LAST, created_at
-                    """), {"product_id": item['product_id']})
+                    """), {"product_id": item['product_id'], "org_id": org_id})
                     
                     for batch in batches:
                         if remaining_quantity <= 0:
@@ -253,15 +263,16 @@ class OrderService:
                         # Record movement
                         db.execute(text("""
                             INSERT INTO inventory_movements (
-                                product_id, batch_id, movement_type, movement_date,
-                                quantity, reference_type, reference_id,
+                                org_id, product_id, batch_id, movement_type, movement_date,
+                                quantity_out, reference_type, reference_id,
                                 created_at, updated_at
                             ) VALUES (
-                                :product_id, :batch_id, 'sale', CURRENT_DATE,
-                                :quantity, 'order', :order_id,
+                                :org_id, :product_id, :batch_id, 'sale', CURRENT_DATE,
+                                :quantity_out, 'order', :order_id,
                                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                             )
                         """), {
+                            "org_id": org_id,
                             "product_id": item['product_id'],
                             "batch_id": batch.batch_id,
                             "quantity_out": allocation,
