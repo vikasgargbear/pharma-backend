@@ -45,12 +45,7 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 30
     
     # CORS - Enhanced for production
-    ALLOWED_ORIGINS: list = [
-        "http://localhost:3000", 
-        "http://localhost:3001",
-        "https://your-domain.com",  # Add your production domain
-        "https://app.supabase.io"  # Supabase dashboard
-    ]
+    ALLOWED_ORIGINS: list = ["*"]  # Allow all origins for now, restrict in production
     
     # Database Connection Pool (Memory optimized for Render)
     DB_POOL_SIZE: int = 2 if os.getenv("DATABASE_URL", "").startswith("postgresql") else 2
