@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from ...database import get_db
-from ...core.auth import get_current_org_optional
+from ...core.auth import get_current_org
 from ...services.enterprise_order_service import (
     EnterpriseOrderService,
     OrderCreationRequest,
@@ -34,7 +34,7 @@ router = APIRouter(
 async def create_enterprise_order(
     order_request: OrderCreationRequest,
     db: Session = Depends(get_db),
-    current_org = Depends(get_current_org_optional)
+    current_org = Depends(get_current_org)
 ):
     """
     Create a complete order with comprehensive validation and data integrity
@@ -60,8 +60,7 @@ async def create_enterprise_order(
     - Prevents data integrity issues
     """
     try:
-        # Use default org_id if not authenticated
-        org_id = current_org["org_id"] if current_org else "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
+        org_id = current_org["org_id"]
         logger.info(f"Creating enterprise order for org {org_id}, customer {order_request.customer_id}")
         
         # Initialize enterprise service
@@ -95,7 +94,7 @@ async def create_enterprise_order(
 async def create_quick_sale_compatible(
     request_data: dict,
     db: Session = Depends(get_db),
-    current_org = Depends(get_current_org_optional)
+    current_org = Depends(get_current_org)
 ):
     """
     Backwards compatible endpoint that maps old quick-sale requests to enterprise format
@@ -104,8 +103,7 @@ async def create_quick_sale_compatible(
     the new enterprise service, ensuring data integrity without breaking existing clients.
     """
     try:
-        # Use default org_id if not authenticated
-        org_id = current_org["org_id"] if current_org else "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
+        org_id = current_org["org_id"]
         logger.info(f"Processing quick-sale request for org {org_id}")
         
         # Transform old format to new enterprise format
@@ -212,12 +210,11 @@ async def health_check():
 async def get_order_details(
     order_id: int,
     db: Session = Depends(get_db),
-    current_org = Depends(get_current_org_optional)
+    current_org = Depends(get_current_org)
 ):
     """Get comprehensive order details"""
     try:
-        # Use default org_id if not authenticated
-        org_id = current_org["org_id"] if current_org else "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
+        org_id = current_org["org_id"]
         
         # Get order with all related data
         from sqlalchemy import text

@@ -407,16 +407,19 @@ async def calculate_invoice_totals(
             SELECT business_settings->>'state' as state,
                    business_settings->>'state_code' as state_code
             FROM organizations
-            LIMIT 1
+            WHERE org_id = '12de5e22-eee7-4d25-b3a7-d16d01c6170f'
         """)).first()
         
-        # Default to Karnataka if not set
-        company_state = org_state_result.state if org_state_result and org_state_result.state else "Karnataka"
-        company_state_code = org_state_result.state_code if org_state_result and org_state_result.state_code else "29"
+        # Get seller's state - if not set, treat as intrastate
+        company_state = org_state_result.state if org_state_result and org_state_result.state else None
+        company_state_code = org_state_result.state_code if org_state_result and org_state_result.state_code else None
         
-        # If customer has no state, use company state (same state transaction)
-        customer_state = customer.state if customer.state else company_state
-        is_interstate = customer_state.lower() != company_state.lower()
+        # Determine if interstate
+        if company_state and customer.state:
+            is_interstate = customer.state.lower() != company_state.lower()
+        else:
+            # If either state is missing, default to intrastate (CGST/SGST)
+            is_interstate = False
         
         subtotal = Decimal("0")
         total_cgst = Decimal("0")
