@@ -1005,36 +1005,38 @@ class EnterpriseOrderService:
         for item in items:
             self.db.execute(text("""
                 INSERT INTO invoice_items (
-                    invoice_id, product_id, product_name, product_code,
-                    hsn_code, batch_number,
-                    quantity, unit_price,
+                    invoice_id, product_id, product_name,
+                    hsn_code, batch_id, batch_number,
+                    quantity, unit_price, mrp,
                     discount_percent, discount_amount,
-                    tax_percent, cgst_amount, sgst_amount, igst_amount,
-                    line_total
+                    gst_percent, cgst_amount, sgst_amount, igst_amount,
+                    taxable_amount, total_amount
                 ) VALUES (
-                    :invoice_id, :product_id, :product_name, :product_code,
-                    :hsn_code, :batch_number,
-                    :quantity, :unit_price,
+                    :invoice_id, :product_id, :product_name,
+                    :hsn_code, :batch_id, :batch_number,
+                    :quantity, :unit_price, :mrp,
                     :discount_percent, :discount_amount,
-                    :tax_percent, :cgst_amount, :sgst_amount, :igst_amount,
-                    :line_total
+                    :gst_percent, :cgst_amount, :sgst_amount, :igst_amount,
+                    :taxable_amount, :total_amount
                 )
             """), {
                 "invoice_id": invoice_id,
                 "product_id": item.product_id,
                 "product_name": item.product_info.product_name,
-                "product_code": item.product_info.product_code,
                 "hsn_code": item.product_info.hsn_code,
+                "batch_id": item.batch_info.batch_id if item.batch_info else None,
                 "batch_number": item.batch_info.batch_number if item.batch_info else None,
                 "quantity": item.quantity,
                 "unit_price": float(item.unit_price),
+                "mrp": float(item.mrp),
                 "discount_percent": float(item.discount_percent),
                 "discount_amount": float(item.discount_amount),
-                "tax_percent": float(item.tax_percent),
+                "gst_percent": float(item.tax_percent),
                 "cgst_amount": float(item.cgst_amount),
                 "sgst_amount": float(item.sgst_amount),
                 "igst_amount": float(item.igst_amount),
-                "line_total": float(item.total_price)
+                "taxable_amount": float(item.taxable_amount),
+                "total_amount": float(item.total_price)
             })
     
     def _process_comprehensive_payment(self, order_id: int, invoice_id: int, 
