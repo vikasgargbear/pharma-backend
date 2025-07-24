@@ -2,9 +2,12 @@
 Customer service layer for business logic
 Handles GST validation, credit management, and ledger calculations
 """
-from typing import Optional, Dict, Any
+from __future__ import annotations
+
+from typing import Optional, Dict, Any, List
 from datetime import datetime, date, timedelta
 from decimal import Decimal
+from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import logging
@@ -126,6 +129,53 @@ class CustomerService:
             "last_order_date": business.last_order_date,
             "outstanding_amount": outstanding
         }
+    
+    @staticmethod
+    def get_customers_statistics_batch(db: Session, customer_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+        """Get customer business statistics for multiple customers in one query"""
+        if not customer_ids:
+            return {}
+        
+        # Get all statistics in one query
+        result = db.execute(text("""
+            SELECT 
+                c.customer_id,
+                COUNT(DISTINCT o.order_id) as total_orders,
+                COALESCE(SUM(o.final_amount), 0) as total_business,
+                MAX(o.order_date) as last_order_date,
+                COALESCE(SUM(CASE 
+                    WHEN o.order_status NOT IN ('cancelled', 'draft') 
+                    AND o.paid_amount < o.final_amount 
+                    THEN o.final_amount - o.paid_amount 
+                    ELSE 0 
+                END), 0) as outstanding_amount
+            FROM customers c
+            LEFT JOIN orders o ON c.customer_id = o.customer_id 
+                AND o.order_status NOT IN ('cancelled', 'draft')
+            WHERE c.customer_id = ANY(:customer_ids)
+            GROUP BY c.customer_id
+        """), {"customer_ids": customer_ids})
+        
+        stats_by_customer = {}
+        for row in result:
+            stats_by_customer[row.customer_id] = {
+                "total_orders": row.total_orders or 0,
+                "total_business": row.total_business or Decimal("0.00"),
+                "last_order_date": row.last_order_date,
+                "outstanding_amount": row.outstanding_amount or Decimal("0.00")
+            }
+        
+        # Fill in missing customers with default values
+        for customer_id in customer_ids:
+            if customer_id not in stats_by_customer:
+                stats_by_customer[customer_id] = {
+                    "total_orders": 0,
+                    "total_business": Decimal("0.00"),
+                    "last_order_date": None,
+                    "outstanding_amount": Decimal("0.00")
+                }
+        
+        return stats_by_customer
     
     @staticmethod
     def get_customer_ledger(
