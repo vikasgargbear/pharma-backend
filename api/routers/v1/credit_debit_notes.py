@@ -392,7 +392,7 @@ async def get_note_print_data(
         # Get organization details
         org_query = """
             SELECT * FROM organizations 
-            WHERE organization_id = '12de5e22-eee7-4d25-b3a7-d16d01c6170f'
+            WHERE org_id = '12de5e22-eee7-4d25-b3a7-d16d01c6170f'
         """
         organization = db.execute(text(org_query)).first()
         

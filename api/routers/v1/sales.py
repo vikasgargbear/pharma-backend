@@ -91,7 +91,7 @@ async def create_direct_sale(
         # Get seller GSTIN (from request or organization default)
         if not sale_data.seller_gstin:
             org = db.execute(
-                text("SELECT gst_number FROM organizations WHERE organization_id = :org_id"),
+                text("SELECT gst_number FROM organizations WHERE org_id = :org_id"),
                 {"org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f"}
             ).first()
             seller_gstin = org.gst_number if org else "27AABCU9603R1ZM"  # Default Maharashtra GSTIN
@@ -417,7 +417,7 @@ async def calculate_sale_totals(
         # Get seller GSTIN
         if not sale_data.seller_gstin:
             org = db.execute(
-                text("SELECT gst_number FROM organizations WHERE organization_id = :org_id"),
+                text("SELECT gst_number FROM organizations WHERE org_id = :org_id"),
                 {"org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f"}
             ).first()
             seller_gstin = org.gst_number if org else "27AABCU9603R1ZM"
@@ -502,7 +502,7 @@ async def get_sale_print_data(
     try:
         # Get organization details
         org = db.execute(
-            text("SELECT * FROM organizations WHERE organization_id = :org_id"),
+            text("SELECT * FROM organizations WHERE org_id = :org_id"),
             {"org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f"}
         ).first()
         
