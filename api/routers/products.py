@@ -14,7 +14,7 @@ from ..core.security import ResourceNotFoundError
 from ..database import get_db
 from ..models import Product
 from ..base_schemas import ProductCreate as BaseProductCreate
-from ..schemas_v2.product_schema import ProductCreate, ProductUpdate, ProductResponse
+# from ..schemas_v2.product_schema import ProductCreate, ProductUpdate, ProductResponse
 
 # Create router
 router = APIRouter(prefix="/products", tags=["products"])
@@ -91,18 +91,31 @@ def create_product(product: dict, db: Session = Depends(get_db)):
         for field in ['pack_input', 'pack_quantity', 'pack_multiplier', 'pack_unit_type']:
             print(f"  {field}: {db_fields.get(field, 'NOT IN DICT')}")
         
-        # Create product with the dict
+        # Create product with the dict - filter out fields that might not exist in DB
         print(f"Fields being sent to DB: {list(db_fields.keys())}")
-        db_product = Product(**db_fields)
+        
+        # Get the actual columns from the Product model
+        valid_columns = {c.name for c in Product.__table__.columns}
+        
+        # Filter db_fields to only include valid columns
+        filtered_fields = {k: v for k, v in db_fields.items() if k in valid_columns}
+        
+        # Log any fields that were filtered out
+        filtered_out = set(db_fields.keys()) - set(filtered_fields.keys())
+        if filtered_out:
+            print(f"⚠️  Filtered out fields not in database: {filtered_out}")
+            print("   These fields need database migration to work properly")
+        
+        db_product = Product(**filtered_fields)
         db.add(db_product)
         db.commit()
         db.refresh(db_product)
         
         # Debug: Check what was saved
         print(f"\nProduct saved - checking pack fields:")
-        print(f"  pack_input: {db_product.pack_input}")
-        print(f"  pack_quantity: {db_product.pack_quantity}")
-        print(f"  pack_multiplier: {db_product.pack_multiplier}")
+        print(f"  pack_input: {getattr(db_product, 'pack_input', 'FIELD NOT IN DB')}")
+        print(f"  pack_quantity: {getattr(db_product, 'pack_quantity', 'FIELD NOT IN DB')}")
+        print(f"  pack_multiplier: {getattr(db_product, 'pack_multiplier', 'FIELD NOT IN DB')}")
         print(f"  pack_unit_type: {db_product.pack_unit_type}")
         
         # Debug logging for batch creation
@@ -159,13 +172,13 @@ def create_product(product: dict, db: Session = Depends(get_db)):
             "created_at": db_product.created_at.isoformat() if db_product.created_at else None,
             "updated_at": db_product.updated_at.isoformat() if db_product.updated_at else None,
             "pack_config": {
-                "pack_input": db_product.pack_input,
-                "pack_quantity": db_product.pack_quantity,
-                "pack_multiplier": db_product.pack_multiplier,
-                "pack_unit_type": db_product.pack_unit_type,
-                "unit_count": db_product.unit_count,
-                "unit_measurement": db_product.unit_measurement,
-                "packages_per_box": db_product.packages_per_box
+                "pack_input": getattr(db_product, 'pack_input', None),
+                "pack_quantity": getattr(db_product, 'pack_quantity', None),
+                "pack_multiplier": getattr(db_product, 'pack_multiplier', None),
+                "pack_unit_type": getattr(db_product, 'pack_unit_type', None),
+                "unit_count": getattr(db_product, 'unit_count', None),
+                "unit_measurement": getattr(db_product, 'unit_measurement', None),
+                "packages_per_box": getattr(db_product, 'packages_per_box', None)
             },
             "message": "Product created successfully"
         }
@@ -267,7 +280,7 @@ def get_products(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get products: {str(e)}")
 
-@router.get("/{product_id}", response_model=ProductResponse)
+@router.get("/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
     """Get a single product by ID"""
     try:
@@ -275,43 +288,43 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         if not db_product:
             raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
         
-        # Return using ProductResponse model
-        return ProductResponse(
-            product_id=db_product.product_id,
-            product_code=db_product.product_code,
-            product_name=db_product.product_name,
-            manufacturer=db_product.manufacturer,
-            hsn_code=db_product.hsn_code,
-            category=db_product.category,
-            salt_composition=db_product.salt_composition,
-            mrp=db_product.mrp,
-            sale_price=db_product.sale_price,
-            cost_price=db_product.purchase_price,
-            gst_percent=db_product.gst_percent,
-            base_unit=db_product.base_uom_code or 'Unit',
-            sale_unit=db_product.sale_uom_code or 'Unit',
-            org_id=str(db_product.org_id),
-            is_active=db_product.is_active,
-            created_at=db_product.created_at,
-            updated_at=db_product.updated_at,
-            pack_config={
-                "pack_input": db_product.pack_input,
-                "pack_quantity": db_product.pack_quantity,
-                "pack_multiplier": db_product.pack_multiplier,
-                "pack_unit_type": db_product.pack_unit_type,
-                "unit_count": db_product.unit_count,
-                "unit_measurement": db_product.unit_measurement,
-                "packages_per_box": db_product.packages_per_box
+        # Return product as dict
+        return {
+            "product_id": db_product.product_id,
+            "product_code": db_product.product_code,
+            "product_name": db_product.product_name,
+            "manufacturer": db_product.manufacturer,
+            "hsn_code": db_product.hsn_code,
+            "category": db_product.category,
+            "salt_composition": db_product.salt_composition,
+            "mrp": float(db_product.mrp or 0),
+            "sale_price": float(db_product.sale_price or 0),
+            "cost_price": float(db_product.purchase_price or 0),
+            "gst_percent": float(db_product.gst_percent or 12),
+            "base_unit": db_product.base_uom_code or 'Unit',
+            "sale_unit": db_product.sale_uom_code or 'Unit',
+            "org_id": str(db_product.org_id),
+            "is_active": db_product.is_active,
+            "created_at": db_product.created_at.isoformat() if db_product.created_at else None,
+            "updated_at": db_product.updated_at.isoformat() if db_product.updated_at else None,
+            "pack_config": {
+                "pack_input": getattr(db_product, 'pack_input', None),
+                "pack_quantity": getattr(db_product, 'pack_quantity', None),
+                "pack_multiplier": getattr(db_product, 'pack_multiplier', None),
+                "pack_unit_type": getattr(db_product, 'pack_unit_type', None),
+                "unit_count": getattr(db_product, 'unit_count', None),
+                "unit_measurement": getattr(db_product, 'unit_measurement', None),
+                "packages_per_box": getattr(db_product, 'packages_per_box', None)
             }
-        )
+        }
         
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get product: {str(e)}")
 
-@router.put("/{product_id}", response_model=ProductResponse) 
-def update_product(product_id: int, product_update: ProductUpdate, db: Session = Depends(get_db)):
+@router.put("/{product_id}") 
+def update_product(product_id: int, product_update: dict, db: Session = Depends(get_db)):
     """Update a product with new pack configuration"""
     try:
         # Get existing product
@@ -320,44 +333,43 @@ def update_product(product_id: int, product_update: ProductUpdate, db: Session =
             raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
         
         # Update fields
-        update_data = product_update.model_dump(exclude_unset=True) if hasattr(product_update, 'model_dump') else product_update.dict(exclude_unset=True)
-        for field, value in update_data.items():
-            if hasattr(db_product, field):
+        for field, value in product_update.items():
+            if hasattr(db_product, field) and value is not None:
                 setattr(db_product, field, value)
         
         db_product.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(db_product)
         
-        # Return using ProductResponse model
-        return ProductResponse(
-            product_id=db_product.product_id,
-            product_code=db_product.product_code,
-            product_name=db_product.product_name,
-            manufacturer=db_product.manufacturer,
-            hsn_code=db_product.hsn_code,
-            category=db_product.category,
-            salt_composition=db_product.salt_composition,
-            mrp=db_product.mrp,
-            sale_price=db_product.sale_price,
-            cost_price=db_product.purchase_price,
-            gst_percent=db_product.gst_percent,
-            base_unit=db_product.base_uom_code or 'Unit',
-            sale_unit=db_product.sale_uom_code or 'Unit',
-            org_id=str(db_product.org_id),
-            is_active=db_product.is_active,
-            created_at=db_product.created_at,
-            updated_at=db_product.updated_at,
-            pack_config={
-                "pack_input": db_product.pack_input,
-                "pack_quantity": db_product.pack_quantity,
-                "pack_multiplier": db_product.pack_multiplier,
-                "pack_unit_type": db_product.pack_unit_type,
-                "unit_count": db_product.unit_count,
-                "unit_measurement": db_product.unit_measurement,
-                "packages_per_box": db_product.packages_per_box
+        # Return product as dict
+        return {
+            "product_id": db_product.product_id,
+            "product_code": db_product.product_code,
+            "product_name": db_product.product_name,
+            "manufacturer": db_product.manufacturer,
+            "hsn_code": db_product.hsn_code,
+            "category": db_product.category,
+            "salt_composition": db_product.salt_composition,
+            "mrp": float(db_product.mrp or 0),
+            "sale_price": float(db_product.sale_price or 0),
+            "cost_price": float(db_product.purchase_price or 0),
+            "gst_percent": float(db_product.gst_percent or 12),
+            "base_unit": db_product.base_uom_code or 'Unit',
+            "sale_unit": db_product.sale_uom_code or 'Unit',
+            "org_id": str(db_product.org_id),
+            "is_active": db_product.is_active,
+            "created_at": db_product.created_at.isoformat() if db_product.created_at else None,
+            "updated_at": db_product.updated_at.isoformat() if db_product.updated_at else None,
+            "pack_config": {
+                "pack_input": getattr(db_product, 'pack_input', None),
+                "pack_quantity": getattr(db_product, 'pack_quantity', None),
+                "pack_multiplier": getattr(db_product, 'pack_multiplier', None),
+                "pack_unit_type": getattr(db_product, 'pack_unit_type', None),
+                "unit_count": getattr(db_product, 'unit_count', None),
+                "unit_measurement": getattr(db_product, 'unit_measurement', None),
+                "packages_per_box": getattr(db_product, 'packages_per_box', None)
             }
-        )
+        }
     except HTTPException:
         raise
     except Exception as e:
