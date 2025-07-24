@@ -13,19 +13,22 @@ def run_migration():
     try:
         db_manager = get_database_manager()
         
-        # Get SQL file path
-        sql_file = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "database", "supabase", "add_pack_fields.sql"
-        )
-        
-        if not os.path.exists(sql_file):
-            print(f"❌ SQL file not found: {sql_file}")
-            return False
-            
-        # Read SQL content
-        with open(sql_file, 'r') as f:
-            sql_content = f.read()
+        # SQL content embedded directly to avoid file path issues
+        sql_content = """
+-- Add pack configuration columns
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pack_input VARCHAR(50);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pack_quantity INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pack_multiplier INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS pack_unit_type VARCHAR(10);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS unit_count INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS unit_measurement VARCHAR(20);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS packages_per_box INTEGER;
+
+-- Add indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_products_pack_unit_type ON products(pack_unit_type);
+CREATE INDEX IF NOT EXISTS idx_products_pack_quantity ON products(pack_quantity);
+CREATE INDEX IF NOT EXISTS idx_products_packages_per_box ON products(packages_per_box);
+"""
         
         # Execute migration
         with db_manager.get_session() as db:
