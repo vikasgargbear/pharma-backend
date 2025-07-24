@@ -24,6 +24,11 @@ from ...services.enterprise_order_service import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+router = APIRouter(
+    prefix="/api/v1/enterprise-orders",
+    tags=["enterprise-orders"]
+)
+
 @router.get("/test-products")
 async def get_test_products(db: Session = Depends(get_db)):
     """Get a few products for testing"""
@@ -37,11 +42,6 @@ async def get_test_products(db: Session = Depends(get_db)):
     """)).fetchall()
     
     return [{"product_id": r.product_id, "name": r.product_name, "price": float(r.sale_price or 0), "stock": r.quantity_available} for r in result]
-
-router = APIRouter(
-    prefix="/api/v1/enterprise-orders",
-    tags=["enterprise-orders"]
-)
 
 # Backwards compatibility endpoint that maps to enterprise service
 @router.post("/", response_model=OrderCreationResponse)
