@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import logging
+from functools import lru_cache
 
 from ...database import get_db
 from ...schemas_v2.customer import (
@@ -23,6 +24,28 @@ router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
 
 # Default organization ID (should come from auth in production)
 DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
+
+# Cache the area column check result
+@lru_cache(maxsize=1)
+def check_area_column_exists() -> bool:
+    """Check if area column exists in customers table (cached)"""
+    from ...database import SessionLocal
+    db = SessionLocal()
+    try:
+        result = db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_name = 'customers' 
+                AND column_name = 'area'
+            )
+        """)).scalar()
+        return result
+    except Exception as e:
+        logger.error(f"Error checking area column: {e}")
+        return False
+    finally:
+        db.close()
 
 
 @router.post("/", response_model=CustomerResponse)
@@ -111,6 +134,7 @@ async def list_customers(
     is_active: Optional[bool] = None,
     city: Optional[str] = None,
     has_gstin: Optional[bool] = None,
+    include_stats: bool = Query(True, description="Include business statistics"),
     db: Session = Depends(get_db)
 ):
     """
@@ -120,8 +144,11 @@ async def list_customers(
     - **customer_type**: Filter by type (retail/wholesale/hospital/clinic/pharmacy)
     - **is_active**: Filter active/inactive customers
     - **has_gstin**: Filter customers with/without GST number
+    - **include_stats**: Include business statistics (set to false for faster response)
     """
     try:
+        logger.info(f"Customer search request: search={search}, limit={limit}, skip={skip}, include_stats={include_stats}")
+        
         # Build query
         query = "SELECT * FROM customers WHERE org_id = :org_id"
         count_query = "SELECT COUNT(*) FROM customers WHERE org_id = :org_id"
@@ -129,15 +156,8 @@ async def list_customers(
         
         # Add filters
         if search:
-            # Check if area column exists in the database
-            area_exists = db.execute(text("""
-                SELECT EXISTS (
-                    SELECT 1 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'customers' 
-                    AND column_name = 'area'
-                )
-            """)).scalar()
+            # Check if area column exists (cached)
+            area_exists = check_area_column_exists()
             
             if area_exists:
                 query += """ AND (
@@ -197,22 +217,37 @@ async def list_customers(
                 count_query += " AND gstin IS NULL"
         
         # Get total count
+        logger.debug(f"Executing count query: {count_query}")
         total = db.execute(text(count_query), params).scalar()
+        logger.info(f"Total customers found: {total}")
         
         # Get customers
         query += " ORDER BY customer_name LIMIT :limit OFFSET :skip"
         params.update({"limit": limit, "skip": skip})
         
+        logger.debug(f"Executing main query with params: {params}")
         result = db.execute(text(query), params)
         
         customers = []
         for row in result:
-            # Get statistics for each customer
-            stats = CustomerService.get_customer_statistics(db, row.customer_id)
-            
             customer_dict = dict(row._mapping)
-            customer_dict.update(stats)
+            
+            # Get statistics for each customer only if requested
+            if include_stats:
+                stats = CustomerService.get_customer_statistics(db, row.customer_id)
+                customer_dict.update(stats)
+            else:
+                # Set default values for statistics
+                customer_dict.update({
+                    "total_orders": 0,
+                    "total_business": 0,
+                    "last_order_date": None,
+                    "outstanding_amount": 0
+                })
+            
             customers.append(CustomerResponse(**customer_dict))
+        
+        logger.info(f"Returning {len(customers)} customers")
         
         return CustomerListResponse(
             total=total,
