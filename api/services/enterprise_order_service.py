@@ -673,30 +673,23 @@ class EnterpriseOrderService:
         timestamp = datetime.now()
         today_prefix = f"ORD{timestamp.strftime('%Y%m%d')}"
         
-        # Get max order number for today without FOR UPDATE (not allowed with aggregate)
+        # Get count of today's orders (simpler approach)
         result = self.db.execute(text("""
-            SELECT COALESCE(MAX(
-                CASE 
-                    WHEN order_number ~ :pattern THEN 
-                        CAST(SUBSTRING(order_number FROM :length + 1) AS INTEGER)
-                    ELSE 0 
-                END
-            ), 0) + 1 as next_seq
+            SELECT COUNT(*) as order_count
             FROM orders 
             WHERE org_id = :org_id 
             AND order_number LIKE :prefix
         """), {
             "org_id": self.org_id,
-            "pattern": f"^{today_prefix}[0-9]+$",
-            "length": len(today_prefix),
             "prefix": f"{today_prefix}%"
         }).first()
         
-        seq_num = result.next_seq if result else 1
+        # Use count + 1 as sequence, with max 9999 to prevent overflow
+        seq_num = (result.order_count + 1) % 10000 if result else 1
         
-        # Add microseconds to ensure uniqueness in concurrent requests
-        unique_suffix = timestamp.strftime('%f')[:3]  # First 3 digits of microseconds
-        return f"{today_prefix}{seq_num:04d}{unique_suffix}"
+        # Add timestamp suffix for uniqueness
+        unique_suffix = timestamp.strftime('%H%M%S')
+        return f"{today_prefix}-{seq_num:04d}-{unique_suffix}"
     
     def _create_comprehensive_order_record(self, customer: CustomerInfo, 
                                          order_number: str, totals: Dict, 
