@@ -463,7 +463,25 @@ async def generate_invoice(
         """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).fetchone()
         
         if not order:
-            raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+            # Get helpful debugging info
+            latest = db.execute(text("""
+                SELECT MAX(order_id) as max_id FROM orders WHERE org_id = :org_id
+            """), {"org_id": DEFAULT_ORG_ID}).scalar()
+            
+            raise HTTPException(
+                status_code=404, 
+                detail={
+                    "error": f"Order {order_id} not found",
+                    "latest_order_id": latest,
+                    "message": f"Order {order_id} does not exist. The latest order in the system is #{latest}.",
+                    "possible_issues": [
+                        "The order creation may have failed",
+                        "The frontend is using a cached/incorrect order ID",
+                        "Try using the create-with-order endpoint instead"
+                    ],
+                    "solution": "Use POST /api/v1/invoices/create-with-order to create both order and invoice together"
+                }
+            )
         
         if order.order_status not in ["confirmed", "processing", "packed"]:
             raise HTTPException(
