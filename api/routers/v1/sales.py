@@ -373,7 +373,7 @@ async def get_sale_detail(
                        i.gst_type, i.payment_mode, i.payment_status as sale_status,
                        i.notes, i.created_at
                 FROM invoices i
-                WHERE i.invoice_id = :sale_id::int
+                WHERE i.invoice_id = :sale_id
             """),
             {"sale_id": sale_id}
         ).first()
@@ -387,7 +387,7 @@ async def get_sale_detail(
                 SELECT ii.*, p.product_name, p.hsn_code
                 FROM invoice_items ii
                 LEFT JOIN products p ON ii.product_id = p.product_id
-                WHERE ii.invoice_id = :sale_id::int
+                WHERE ii.invoice_id = :sale_id
             """),
             {"sale_id": sale_id}
         ).fetchall()
