@@ -77,7 +77,8 @@ async def create_quick_sale(
         
         # Step 1: Validate customer
         customer = db.execute(text("""
-            SELECT customer_id, customer_name, gstin, state_code, credit_days
+            SELECT customer_id, customer_name, gst_number as gstin, state, 
+                   state_code, credit_period_days as credit_days
             FROM customers
             WHERE customer_id = :customer_id AND org_id = :org_id
         """), {
@@ -89,26 +90,30 @@ async def create_quick_sale(
             raise HTTPException(status_code=404, detail="Customer not found")
         
         # Step 2: Create order (behind the scenes)
+        # Generate order number
+        order_number = f"ORD{datetime.now().strftime('%Y%m%d')}{sale.customer_id:04d}"
+        
         order_result = db.execute(text("""
             INSERT INTO orders (
-                org_id, customer_id, order_type, order_status,
+                org_id, customer_id, order_number, order_type, order_status,
                 order_date, delivery_date,
-                subtotal, discount_amount, final_amount,
-                paid_amount, payment_mode,
+                subtotal_amount, discount_amount, tax_amount, final_amount,
+                paid_amount, payment_mode, payment_status,
                 notes, created_at, updated_at
             ) VALUES (
-                :org_id, :customer_id, 'sales_order', 'confirmed',
-                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
-                0, :discount_amount, 0,
-                0, :payment_mode,
+                :org_id, :customer_id, :order_number, 'sales', 'confirmed',
+                CURRENT_DATE, CURRENT_DATE,
+                0, :discount_amount, 0, 0,
+                0, :payment_mode, 'pending',
                 :notes, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             ) RETURNING order_id
         """), {
             "org_id": org_id,
             "customer_id": sale.customer_id,
+            "order_number": order_number,
             "discount_amount": float(sale.discount_amount or 0),
-            "payment_mode": sale.payment_mode,
-            "notes": sale.notes
+            "payment_mode": sale.payment_mode.lower(),
+            "notes": sale.notes or ""
         })
         
         order_id = order_result.scalar()
@@ -231,7 +236,7 @@ async def create_quick_sale(
         
         db.execute(text("""
             UPDATE orders 
-            SET subtotal = :subtotal,
+            SET subtotal_amount = :subtotal,
                 final_amount = :final_amount,
                 tax_amount = :tax_amount
             WHERE order_id = :order_id

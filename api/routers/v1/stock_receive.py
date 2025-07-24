@@ -13,7 +13,7 @@ from sqlalchemy import text
 from pydantic import BaseModel, Field
 
 from ...database import get_db
-from ...core.auth import get_current_org
+from ...dependencies import get_current_org
 
 router = APIRouter(
     prefix="/api/v1/stock",

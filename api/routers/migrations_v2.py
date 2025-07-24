@@ -30,6 +30,9 @@ from ..migrations.fix_missing_invoices_table import (
 from ..migrations.add_missing_invoice_columns import (
     add_missing_invoice_columns
 )
+from ..migrations.add_state_code_column import (
+    add_state_code_column
+)
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +262,39 @@ async def fix_missing_invoices_table(db: Session = Depends(get_db)):
         
     except Exception as e:
         logger.error(f"Error creating invoices table: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/add-state-code-column")
+async def add_state_code_to_customers(db: Session = Depends(get_db)):
+    """Add state_code column to customers table for GST calculations"""
+    try:
+        from sqlalchemy import text
+        
+        logger.info("Adding state_code column to customers table...")
+        add_state_code_column(db)
+        
+        # Get summary
+        result = db.execute(text("""
+            SELECT 
+                COUNT(*) as total_customers,
+                COUNT(state_code) as with_state_code,
+                COUNT(*) - COUNT(state_code) as without_state_code
+            FROM customers
+        """)).first()
+        
+        return {
+            "success": True,
+            "message": "State code column added successfully",
+            "summary": {
+                "total_customers": result.total_customers,
+                "with_state_code": result.with_state_code,
+                "without_state_code": result.without_state_code
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error adding state_code column: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -13,7 +13,7 @@ from sqlalchemy import text
 from pydantic import BaseModel, Field
 
 from ...database import get_db
-from ...core.auth import get_current_org
+from ...dependencies import get_current_org
 
 router = APIRouter(
     prefix="/api/v1/invoices",
@@ -73,7 +73,7 @@ async def create_direct_invoice(
     try:
         # Get customer details
         customer = db.execute(text("""
-            SELECT customer_id, customer_name, gstin, state_code, credit_days
+            SELECT customer_id, customer_name, gst_number as gstin, state, state_code, credit_period_days as credit_days
             FROM customers
             WHERE customer_id = :customer_id AND org_id = :org_id
         """), {

@@ -56,9 +56,18 @@ class ProductBase(BaseModel):
     reorder_level: Optional[int] = None
     reorder_quantity: Optional[int] = None
     
-    # Pack info
+    # Pack info - original fields
     pack_size: Optional[str] = None
     pack_details: Optional[dict] = None
+    
+    # New pack configuration fields
+    pack_input: Optional[str] = None  # Raw user input like '10*10' or '1*100ML'
+    pack_quantity: Optional[int] = None  # Quantity per unit (first number)
+    pack_multiplier: Optional[int] = None  # Multiplier or units per box (second number)
+    pack_unit_type: Optional[str] = None  # Unit type like ML, GM, MG
+    unit_count: Optional[int] = None  # Units per package
+    unit_measurement: Optional[str] = None  # Measurement with unit like '100ML'
+    packages_per_box: Optional[int] = None  # Packages per box
     
     # Barcode
     barcode: Optional[str] = None
@@ -92,6 +101,12 @@ class ProductBase(BaseModel):
 class ProductCreate(ProductBase):
     """Schema for creating a product"""
     org_id: Optional[str] = Field(default=DEFAULT_ORG_ID)
+    # Additional fields for initial inventory
+    quantity_received: Optional[int] = 0
+    expiry_date: Optional[str] = None
+    cost_price: Optional[Decimal] = Decimal("0")
+    base_unit: Optional[str] = "Unit"
+    sale_unit: Optional[str] = "Unit"
 
 class ProductUpdate(BaseModel):
     """Schema for updating a product - all fields optional"""
@@ -101,9 +116,20 @@ class ProductUpdate(BaseModel):
     hsn_code: Optional[str] = None
     mrp: Optional[Decimal] = None
     gst_percent: Optional[Decimal] = None
-    pack_size: Optional[str] = None
     is_active: Optional[bool] = None
-    # Add other fields as needed
+    # Pack configuration fields
+    pack_input: Optional[str] = None
+    pack_quantity: Optional[int] = None
+    pack_multiplier: Optional[int] = None
+    pack_unit_type: Optional[str] = None
+    unit_count: Optional[int] = None
+    unit_measurement: Optional[str] = None
+    packages_per_box: Optional[int] = None
+    # Other fields
+    salt_composition: Optional[str] = None
+    cost_price: Optional[Decimal] = None
+    base_unit: Optional[str] = None
+    sale_unit: Optional[str] = None
 
 class ProductResponse(ProductBase):
     """Schema for product responses"""
@@ -111,6 +137,11 @@ class ProductResponse(ProductBase):
     org_id: str
     created_at: datetime
     updated_at: datetime
+    # Include all new pack fields
+    pack_config: Optional[dict] = None
+    base_unit: Optional[str] = None
+    sale_unit: Optional[str] = None
+    cost_price: Optional[Decimal] = None
     
     class Config:
         from_attributes = True
@@ -120,9 +151,15 @@ class ProductQuickCreate(BaseModel):
     """Minimal fields to create a product"""
     product_code: str
     product_name: str
+    manufacturer: str
     mrp: Optional[Decimal] = Decimal("0")
+    sale_price: Optional[Decimal] = Decimal("0")
+    cost_price: Optional[Decimal] = Decimal("0")
     hsn_code: Optional[str] = "30049099"
     gst_percent: Optional[Decimal] = Decimal("12")
+    category: Optional[str] = None
+    base_unit: Optional[str] = "Unit"
+    sale_unit: Optional[str] = "Unit"
 
 
 # Additional schemas to prevent import errors in crud.py

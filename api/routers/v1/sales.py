@@ -404,6 +404,62 @@ async def get_sale_detail(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/calculate")
+async def calculate_sale_totals(
+    sale_data: SaleCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Calculate sale totals without creating the sale
+    Used for preview and validation
+    """
+    try:
+        # Get seller GSTIN
+        if not sale_data.seller_gstin:
+            org = db.execute(
+                text("SELECT gst_number FROM organizations WHERE organization_id = :org_id"),
+                {"org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f"}
+            ).first()
+            seller_gstin = org.gst_number if org else "27AABCU9603R1ZM"
+        else:
+            seller_gstin = sale_data.seller_gstin
+            
+        # Determine GST type
+        gst_type = GSTService.determine_gst_type(
+            seller_gstin=seller_gstin,
+            buyer_gstin=sale_data.party_gst,
+            buyer_state_code=sale_data.party_state_code
+        )
+        
+        # Calculate invoice with GST
+        invoice_calc = GSTService.calculate_invoice_gst(
+            invoice_data={
+                "items": [item.dict() for item in sale_data.items],
+                "discount_amount": sale_data.discount_amount,
+                "other_charges": sale_data.other_charges
+            },
+            seller_gstin=seller_gstin,
+            buyer_gstin=sale_data.party_gst
+        )
+        
+        return {
+            "subtotal": invoice_calc["subtotal"],
+            "total_discount": invoice_calc["total_discount"],
+            "taxable_amount": invoice_calc["subtotal"] - invoice_calc["total_discount"],
+            "cgst_amount": invoice_calc["cgst_amount"],
+            "sgst_amount": invoice_calc["sgst_amount"],
+            "igst_amount": invoice_calc["igst_amount"],
+            "total_tax": invoice_calc["total_tax"],
+            "grand_total": invoice_calc["grand_total"],
+            "gst_type": gst_type.value,
+            "items": invoice_calc["items"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating sale: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/invoice/{invoice_number}")
 async def get_sale_by_invoice(
     invoice_number: str,

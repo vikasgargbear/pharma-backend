@@ -13,7 +13,7 @@ from sqlalchemy import text
 from pydantic import BaseModel, Field
 
 from ...database import get_db
-from ...core.auth import get_current_org
+from ...dependencies import get_current_org
 from ...services.order_service import OrderService
 
 router = APIRouter(
@@ -203,7 +203,7 @@ async def create_invoice_with_order(
         
         # Get customer details
         customer = db.execute(text("""
-            SELECT customer_name, gstin, state_code
+            SELECT customer_name, gst_number as gstin, state, state_code
             FROM customers
             WHERE customer_id = :customer_id
         """), {"customer_id": invoice_data.customer_id}).first()

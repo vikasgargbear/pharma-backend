@@ -102,3 +102,30 @@ def check_permission(required_permission: str):
         return current_user
     
     return permission_checker
+
+
+def get_current_org(
+    current_user: models.User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> str:
+    """
+    Get current organization ID for the authenticated user
+    
+    In a multi-tenant system, this would return the user's organization ID.
+    For now, returns the default organization ID.
+    """
+    # Default organization ID - in production, get from user's organization
+    DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
+    
+    # TODO: Implement proper organization lookup
+    # organization = db.query(models.Organization).filter(
+    #     models.Organization.id == current_user.organization_id
+    # ).first()
+    # if not organization:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_404_NOT_FOUND,
+    #         detail="Organization not found"
+    #     )
+    # return str(organization.id)
+    
+    return DEFAULT_ORG_ID

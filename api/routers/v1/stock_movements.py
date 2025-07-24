@@ -292,9 +292,9 @@ async def create_stock_issue(
         
         # Check available stock
         batch_number = issue_data.get("batch_number", "DEFAULT")
-        inventory = db.execute(
+        batch = db.execute(
             text("""
-                SELECT * FROM inventory 
+                SELECT * FROM batches 
                 WHERE org_id = :org_id 
                 AND product_id = :product_id 
                 AND batch_number = :batch
@@ -306,16 +306,16 @@ async def create_stock_issue(
             }
         ).first()
         
-        if not inventory:
+        if not batch:
             raise HTTPException(
                 status_code=400, 
                 detail=f"No stock found for product with batch {batch_number}"
             )
             
-        if inventory.current_stock < issue_data["quantity"]:
+        if batch.quantity_available < issue_data["quantity"]:
             raise HTTPException(
                 status_code=400,
-                detail=f"Insufficient stock. Available: {inventory.current_stock}"
+                detail=f"Insufficient stock. Available: {batch.quantity_available}"
             )
             
         # Create movement record
@@ -340,7 +340,7 @@ async def create_stock_issue(
                 "movement_date": issue_data["movement_date"],
                 "product_id": issue_data["product_id"],
                 "batch_number": batch_number,
-                "expiry_date": inventory.expiry_date,
+                "expiry_date": batch.expiry_date,
                 "quantity": issue_data["quantity"],
                 "unit": issue_data.get("unit", "strip"),
                 "reason": issue_data["reason"],
@@ -350,17 +350,17 @@ async def create_stock_issue(
             }
         )
         
-        # Update inventory
+        # Update batch quantity
         db.execute(
             text("""
-                UPDATE inventory 
-                SET current_stock = current_stock - :quantity,
-                    last_updated = CURRENT_TIMESTAMP
-                WHERE inventory_id = :inventory_id
+                UPDATE batches 
+                SET quantity_available = quantity_available - :quantity,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE batch_id = :batch_id
             """),
             {
                 "quantity": issue_data["quantity"],
-                "inventory_id": inventory.inventory_id
+                "batch_id": batch.batch_id
             }
         )
         
@@ -483,14 +483,14 @@ async def get_product_batches(
             SELECT 
                 batch_number,
                 expiry_date,
-                current_stock,
-                purchase_price,
+                quantity_available as current_stock,
+                cost_price as purchase_price,
                 selling_price,
                 mrp
-            FROM inventory
+            FROM batches
             WHERE org_id = :org_id
             AND product_id = :product_id
-            AND current_stock > 0
+            AND quantity_available > 0
             ORDER BY expiry_date ASC, batch_number
         """
         

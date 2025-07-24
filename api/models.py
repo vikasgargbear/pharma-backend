@@ -61,9 +61,18 @@ class Product(Base):
     reorder_level = Column(Integer)
     reorder_quantity = Column(Integer)
     
-    # Pack info
+    # Pack info - original fields
     pack_size = Column(Text)
     pack_details = Column(JSON)  # JSONB in database
+    
+    # New pack configuration fields
+    pack_input = Column(Text)  # Raw user input like '10*10' or '1*100ML'
+    pack_quantity = Column(Integer)  # Quantity per unit (first number)
+    pack_multiplier = Column(Integer)  # Multiplier or units per box (second number)
+    pack_unit_type = Column(Text)  # Unit type like ML, GM, MG
+    unit_count = Column(Integer)  # Units per package
+    unit_measurement = Column(Text)  # Measurement with unit like '100ML'
+    packages_per_box = Column(Integer)  # Packages per box
     
     # Barcode
     barcode = Column(Text)
@@ -114,11 +123,62 @@ class Customer(Base):
 
 class Batch(Base):
     __tablename__ = "batches"
-    batch_id = Column(Integer, primary_key=True)
-    batch_number = Column(Text)
-    product_id = Column(Integer)
-    expiry_date = Column(DateTime)
-    quantity_available = Column(Integer)
+    
+    # Primary key
+    batch_id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Foreign keys
+    org_id = Column(UUID(as_uuid=True), nullable=False)
+    product_id = Column(Integer, nullable=False)
+    
+    # Batch identification
+    batch_number = Column(Text, nullable=False)
+    lot_number = Column(Text)
+    serial_number = Column(Text)
+    
+    # Dates
+    manufacturing_date = Column(DateTime)
+    expiry_date = Column(DateTime, nullable=False)
+    days_to_expiry = Column(Integer)
+    is_near_expiry = Column(Boolean, default=False)
+    
+    # Quantities
+    quantity_received = Column(Integer, nullable=False)
+    quantity_available = Column(Integer, nullable=False)
+    quantity_sold = Column(Integer, default=0)
+    quantity_damaged = Column(Integer, default=0)
+    quantity_returned = Column(Integer, default=0)
+    
+    # UOM tracking
+    received_uom = Column(Text)
+    base_quantity = Column(Integer)
+    
+    # Pricing
+    cost_price = Column(Numeric)
+    selling_price = Column(Numeric)
+    mrp = Column(Numeric)
+    
+    # Source
+    supplier_id = Column(Integer)
+    purchase_id = Column(Integer)
+    purchase_invoice_number = Column(Text)
+    
+    # Location
+    branch_id = Column(Integer)
+    location_code = Column(Text)
+    rack_number = Column(Text)
+    
+    # Status
+    batch_status = Column(Text, default='active')
+    is_blocked = Column(Boolean, default=False)
+    block_reason = Column(Text)
+    current_stock_status = Column(Text)
+    
+    # Metadata
+    notes = Column(Text)
+    created_by = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 class Order(Base):
     __tablename__ = "orders"
