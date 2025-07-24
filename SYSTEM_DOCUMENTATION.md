@@ -340,3 +340,408 @@ ORDER BY i.invoice_date;
 
 *Last Updated: 2025-07-24*
 *Note: Other modules will be documented as they are cleaned/solved*
+
+---
+
+## Delivery Challan Module
+
+### Overview
+The Delivery Challan module manages shipping documents for order delivery. Currently, it's implemented as a view over the orders table rather than a separate challan table.
+
+### Database Schema
+
+#### 1. `challans` Table
+Main delivery challan records.
+
+**Key Fields:**
+```sql
+challan_id              INTEGER PK    -- Auto-incrementing
+order_id                INTEGER FK    -- Links to orders
+customer_id             INTEGER FK    -- Links to customers
+challan_number          TEXT          -- Unique challan number
+challan_date            DATE          -- Challan creation date
+dispatch_date           DATE          -- When dispatched
+expected_delivery_date  DATE          -- Expected delivery
+status                  TEXT          -- 'draft','dispatched','delivered','cancelled'
+```
+
+**Transport Details:**
+```sql
+vehicle_number          TEXT          -- Vehicle registration
+driver_name             TEXT          -- Driver name
+driver_phone            TEXT          -- Driver contact
+transport_company       TEXT          -- Transport company name
+lr_number               TEXT          -- LR/Docket number
+freight_amount          NUMERIC       -- Freight charges
+```
+
+**Delivery Details:**
+```sql
+delivery_address        TEXT          -- Full address
+delivery_city           TEXT          -- City
+delivery_state          TEXT          -- State
+delivery_pincode        TEXT          -- PIN code
+delivery_contact_person TEXT          -- Contact person name
+delivery_contact_phone  TEXT          -- Contact phone
+```
+
+**Tracking Fields:**
+```sql
+dispatch_time           TIMESTAMP     -- When dispatched
+delivery_time           TIMESTAMP     -- When delivered
+total_packages          INTEGER       -- Number of packages
+total_weight            NUMERIC       -- Total weight
+prepared_by             INTEGER       -- User who prepared
+dispatched_by           INTEGER       -- User who dispatched
+```
+
+#### 2. `challan_items` Table
+Items included in the challan.
+
+```sql
+challan_item_id         INTEGER PK    -- Auto-incrementing
+challan_id              INTEGER FK    -- Links to challans
+order_item_id           INTEGER FK    -- Links to order_items
+batch_id                INTEGER FK    -- Links to batches
+product_name            TEXT          -- Denormalized product name
+batch_number            TEXT          -- Batch identifier
+expiry_date             DATE          -- Batch expiry
+ordered_quantity        INTEGER       -- Quantity ordered
+dispatched_quantity     INTEGER       -- Quantity in this challan
+pending_quantity        INTEGER       -- Remaining to dispatch
+unit_price              NUMERIC       -- Price per unit
+package_type            TEXT          -- Type of packaging
+packages_count          INTEGER       -- Number of packages
+```
+
+#### 3. `challan_tracking` Table
+Tracking history for challan status updates.
+
+```sql
+tracking_id             INTEGER PK    -- Auto-incrementing
+challan_id              INTEGER FK    -- Links to challans
+location                TEXT          -- Current location
+status                  TEXT          -- Status at this point
+timestamp               TIMESTAMP     -- When updated
+remarks                 TEXT          -- Any remarks
+updated_by              INTEGER       -- User who updated
+updated_by_name         TEXT          -- User name (denormalized)
+```
+
+### Current Implementation Issues
+
+**API Not Using Tables**: The current API (`delivery_challan.py`) is using orders table as a workaround instead of the actual challan tables.
+
+**UPDATE (2025-07-24)**: Created new `enterprise_delivery_challan.py` that properly uses the actual challan tables!
+
+### API Endpoints
+
+#### Legacy Endpoints (uses orders table)
+
+##### 1. GET `/api/v1/delivery-challan/`
+List delivery challans with filtering options.
+
+**Query Parameters:**
+- `customer_id`: Filter by customer
+- `status`: Filter by delivery status
+- `start_date`, `end_date`: Date range filter
+- `skip`, `limit`: Pagination
+
+**Response:**
+```json
+[
+  {
+    "challan_id": 86,
+    "customer_id": 35,
+    "customer_name": "ABC Pharmacy",
+    "challan_date": "2025-07-24",
+    "total_amount": 246.00,
+    "delivery_status": "pending",
+    "delivery_address": "123 Main St",
+    "delivery_date": null,
+    "document_type": "challan"
+  }
+]
+```
+
+#### 2. GET `/api/v1/delivery-challan/{challan_id}`
+Get detailed challan with items.
+
+**Response:**
+```json
+{
+  "challan_id": 86,
+  "customer_name": "ABC Pharmacy",
+  "delivery_status": "pending",
+  "items": [
+    {
+      "product_id": 45,
+      "product_name": "Paracetamol",
+      "quantity": 10,
+      "price": 24.60,
+      "total_amount": 246.00
+    }
+  ]
+}
+```
+
+#### 3. POST `/api/v1/delivery-challan/`
+Creates a new challan (actually creates an order).
+
+##### 4. PUT `/api/v1/delivery-challan/{challan_id}/status`
+Update delivery status.
+
+**Request:**
+```json
+{
+  "status": "delivered",
+  "delivery_date": "2025-07-24",
+  "notes": "Delivered to front desk"
+}
+```
+
+#### New Enterprise Endpoints (uses actual challan tables)
+
+##### 1. POST `/api/v1/enterprise-delivery-challan/`
+Create new delivery challan with proper tracking.
+
+**Request:**
+```json
+{
+  "order_id": 86,
+  "customer_id": 35,
+  "dispatch_date": "2025-07-24",
+  "expected_delivery_date": "2025-07-25",
+  "vehicle_number": "KA-01-AB-1234",
+  "driver_name": "John Doe",
+  "driver_phone": "9876543210",
+  "transport_company": "ABC Logistics",
+  "lr_number": "LR123456",
+  "freight_amount": 500,
+  "delivery_address": "123 Main St",
+  "delivery_city": "Bengaluru",
+  "delivery_state": "Karnataka", 
+  "delivery_pincode": "560001",
+  "delivery_contact_person": "Jane Smith",
+  "delivery_contact_phone": "9876543211",
+  "total_packages": 3,
+  "total_weight": 15.5,
+  "notes": "Handle with care",
+  "items": [
+    {
+      "order_item_id": 101,
+      "product_id": 45,
+      "product_name": "Paracetamol",
+      "batch_id": 123,
+      "batch_number": "BATCH001",
+      "expiry_date": "2026-12-31",
+      "ordered_quantity": 100,
+      "dispatched_quantity": 100,
+      "unit_price": 2.50,
+      "package_type": "Box",
+      "packages_count": 2
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "challan_id": 1,
+  "challan_number": "DC202507240001",
+  "customer_name": "ABC Pharmacy",
+  "status": "draft"
+}
+```
+
+##### 2. GET `/api/v1/enterprise-delivery-challan/`
+List all challans with comprehensive filtering.
+
+##### 3. GET `/api/v1/enterprise-delivery-challan/{challan_id}`
+Get detailed challan with items and tracking history.
+
+##### 4. PUT `/api/v1/enterprise-delivery-challan/{challan_id}/dispatch`
+Mark challan as dispatched.
+
+**Request:**
+```json
+{
+  "dispatch_date": "2025-07-24",
+  "dispatch_location": "Main Warehouse",
+  "vehicle_number": "KA-01-AB-1234",
+  "driver_name": "John Doe",
+  "driver_phone": "9876543210",
+  "remarks": "Dispatched on time"
+}
+```
+
+##### 5. PUT `/api/v1/enterprise-delivery-challan/{challan_id}/deliver`
+Mark challan as delivered with GPS tracking.
+
+**Request:**
+```json
+{
+  "delivery_location": "Customer premise",
+  "remarks": "Delivered to store manager",
+  "latitude": 12.9716,
+  "longitude": 77.5946
+}
+```
+
+##### 6. POST `/api/v1/enterprise-delivery-challan/{challan_id}/tracking`
+Add tracking update.
+
+**Request:**
+```json
+{
+  "location": "Highway checkpoint",
+  "status": "in_transit",
+  "remarks": "Crossed state border",
+  "latitude": 12.8845,
+  "longitude": 77.6036
+}
+```
+
+##### 7. GET `/api/v1/enterprise-delivery-challan/analytics/summary`
+Get delivery analytics and performance metrics.
+
+### Issues with Current Implementation
+
+1. **No Separate Challan Table**: 
+   - Challans are just orders with delivery info
+   - No unique challan numbering
+   - Cannot have multiple challans per order
+
+2. **Limited Functionality**:
+   - No partial deliveries
+   - No tracking of delivered vs ordered quantities
+   - No vehicle/driver assignment
+   - No proof of delivery
+
+3. **Missing Features**:
+   - Challan printing/PDF
+   - Delivery route optimization
+   - SMS/WhatsApp notifications
+   - E-way bill integration
+
+### Proposed Challan Schema
+
+```sql
+-- Delivery Challans Table
+CREATE TABLE delivery_challans (
+    challan_id SERIAL PRIMARY KEY,
+    challan_number VARCHAR(50) UNIQUE NOT NULL,
+    challan_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    order_id INTEGER REFERENCES orders(order_id),
+    customer_id INTEGER REFERENCES customers(customer_id),
+    
+    -- Delivery Details
+    delivery_type VARCHAR(20), -- 'full', 'partial'
+    delivery_address TEXT,
+    delivery_contact VARCHAR(100),
+    delivery_phone VARCHAR(15),
+    
+    -- Status
+    status VARCHAR(20), -- 'draft', 'ready', 'dispatched', 'delivered', 'cancelled'
+    dispatched_at TIMESTAMP,
+    delivered_at TIMESTAMP,
+    
+    -- Assignment
+    vehicle_number VARCHAR(20),
+    driver_name VARCHAR(100),
+    driver_phone VARCHAR(15),
+    
+    -- E-way Bill
+    eway_bill_number VARCHAR(50),
+    eway_bill_date DATE,
+    
+    -- Tracking
+    created_by INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Challan Items
+CREATE TABLE delivery_challan_items (
+    item_id SERIAL PRIMARY KEY,
+    challan_id INTEGER REFERENCES delivery_challans(challan_id),
+    order_item_id INTEGER REFERENCES order_items(order_item_id),
+    product_id INTEGER REFERENCES products(product_id),
+    batch_id INTEGER REFERENCES batches(batch_id),
+    
+    ordered_quantity INTEGER NOT NULL,
+    delivered_quantity INTEGER NOT NULL,
+    pending_quantity INTEGER GENERATED ALWAYS AS (ordered_quantity - delivered_quantity) STORED,
+    
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Delivery Tracking
+CREATE TABLE delivery_tracking (
+    tracking_id SERIAL PRIMARY KEY,
+    challan_id INTEGER REFERENCES delivery_challans(challan_id),
+    status VARCHAR(50),
+    location TEXT,
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    notes TEXT,
+    tracked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    tracked_by INTEGER
+);
+```
+
+### Benefits of Separate Challan System
+
+1. **Multiple Deliveries**: 
+   - Split large orders into multiple challans
+   - Partial deliveries with tracking
+
+2. **Better Tracking**:
+   - Unique challan numbers
+   - Delivery timeline tracking
+   - GPS coordinates for proof
+
+3. **Compliance**:
+   - E-way bill integration
+   - GST compliant challan format
+   - Digital signatures
+
+4. **Operations**:
+   - Driver/vehicle assignment
+   - Route optimization
+   - Delivery performance metrics
+
+### Integration with Orders
+
+**Flow:**
+1. Order created and confirmed
+2. Generate delivery challan(s)
+3. Assign to driver/vehicle
+4. Update status during delivery
+5. Mark as delivered with proof
+6. Update order delivery status
+
+### Future Enhancements
+
+1. **Mobile App for Drivers**
+   - View assigned challans
+   - Update delivery status
+   - Capture signatures/photos
+   - GPS tracking
+
+2. **Customer Features**
+   - Track delivery in real-time
+   - SMS/WhatsApp notifications
+   - Delivery feedback
+
+3. **Analytics**
+   - Delivery performance reports
+   - Driver efficiency metrics
+   - Route optimization
+
+4. **Integration**
+   - E-way bill API
+   - Vehicle tracking systems
+   - Customer notification systems

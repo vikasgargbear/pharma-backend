@@ -54,6 +54,7 @@ from .routers.v1.direct_invoice import router as direct_invoice_router
 from .routers.v1.invoice_with_order import router as invoice_with_order_router
 from .routers.v1.smart_invoice import router as smart_invoice_router
 from .routers.v1.quick_sale import router as quick_sale_router
+from .routers.v1.enterprise_delivery_challan import router as enterprise_delivery_challan_router
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -226,6 +227,7 @@ app.include_router(direct_invoice_router)
 app.include_router(invoice_with_order_router)
 app.include_router(smart_invoice_router)
 # app.include_router(quick_sale_router)  # DEPRECATED: Use enterprise_orders_router instead
+app.include_router(enterprise_delivery_challan_router)  # 🚀 NEW: Enterprise-grade challan API
 
 # Debug router (only in debug mode)
 if settings.DEBUG:
