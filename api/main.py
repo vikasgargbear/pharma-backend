@@ -35,7 +35,8 @@ from .routers import (
     migrations,
     migrations_v2,
     organizations,
-    customers_simple
+    customers_simple,
+    pack_debug
 )
 
 # Import v1 routers
@@ -48,6 +49,7 @@ from .routers.v1 import (
     purchase_returns_router, stock_movements_router, party_ledger_router,
     credit_debit_notes_router, sales_router
 )
+from .routers.v1.stock_receive import router as stock_receive_router
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -214,6 +216,11 @@ app.include_router(stock_movements_router)
 app.include_router(party_ledger_router)
 app.include_router(credit_debit_notes_router)
 app.include_router(sales_router)
+app.include_router(stock_receive_router)
+
+# Debug router (only in debug mode)
+if settings.DEBUG:
+    app.include_router(pack_debug.router)
 
 # Request timing middleware
 @app.middleware("http")
