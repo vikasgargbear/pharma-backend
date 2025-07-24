@@ -229,13 +229,28 @@ async def list_customers(
         result = db.execute(text(query), params)
         
         customers = []
-        for row in result:
+        # Collect all customer data first
+        customer_rows = list(result)
+        
+        # Get statistics in batch if requested
+        stats_by_customer = {}
+        if include_stats:
+            customer_ids = [row.customer_id for row in customer_rows]
+            stats_by_customer = CustomerService.get_customers_statistics_batch(db, customer_ids)
+        
+        # Build customer responses
+        for row in customer_rows:
             customer_dict = dict(row._mapping)
             
-            # Get statistics for each customer only if requested
+            # Add statistics from batch lookup or default values
             if include_stats:
-                stats = CustomerService.get_customer_statistics(db, row.customer_id)
-                customer_dict.update(stats)
+                customer_stats = stats_by_customer.get(row.customer_id, {})
+                customer_dict.update({
+                    "total_orders": customer_stats.get("total_orders", 0),
+                    "total_business": customer_stats.get("total_business", 0),
+                    "last_order_date": customer_stats.get("last_order_date"),
+                    "outstanding_amount": customer_stats.get("outstanding_amount", 0)
+                })
             else:
                 # Set default values for statistics
                 customer_dict.update({

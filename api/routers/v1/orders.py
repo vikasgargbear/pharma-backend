@@ -244,18 +244,35 @@ async def list_orders(
         result = db.execute(text(query), params)
         
         orders = []
-        for row in result:
-            order_dict = dict(row._mapping)
-            
-            # Get order items
+        # Collect all order data first
+        order_rows = list(result)
+        
+        # Get all order items in a single batch query
+        items_by_order = {}
+        if order_rows:
+            order_ids = [row.order_id for row in order_rows]
             items_result = db.execute(text("""
                 SELECT oi.*, p.product_name, p.product_code
                 FROM order_items oi
                 JOIN products p ON oi.product_id = p.product_id
-                WHERE oi.order_id = :order_id
-            """), {"order_id": order_dict["order_id"]})
+                WHERE oi.order_id = ANY(:order_ids)
+                ORDER BY oi.order_id, oi.order_item_id
+            """), {"order_ids": order_ids})
             
-            order_dict["items"] = [dict(item._mapping) for item in items_result]
+            # Group items by order_id
+            for item in items_result:
+                order_id = item.order_id
+                if order_id not in items_by_order:
+                    items_by_order[order_id] = []
+                items_by_order[order_id].append(dict(item._mapping))
+        
+        # Build order responses
+        for row in order_rows:
+            order_dict = dict(row._mapping)
+            
+            # Add items from batch lookup
+            order_dict["items"] = items_by_order.get(row.order_id, [])
+            
             # Map final_amount to total_amount for schema compatibility
             order_dict["total_amount"] = order_dict.get("final_amount", 0)
             order_dict["balance_amount"] = order_dict["total_amount"] - order_dict.get("paid_amount", 0)
