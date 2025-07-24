@@ -45,7 +45,7 @@ class SaleCreate(BaseModel):
     party_address: Optional[str] = None
     party_phone: Optional[str] = None
     party_state_code: Optional[str] = None  # For parties without GSTIN
-    payment_mode: str = "cash"  # cash, credit, card, upi
+    payment_method: str = "cash"  # cash, credit, card, upi
     items: List[SaleItemCreate]
     discount_amount: Optional[Decimal] = Decimal("0")
     other_charges: Optional[Decimal] = Decimal("0")
@@ -68,7 +68,7 @@ class SaleResponse(BaseModel):
     igst_amount: Decimal
     total_amount: Decimal
     gst_type: str
-    payment_mode: str
+    payment_method: str
     sale_status: str
     created_at: datetime
 
@@ -135,7 +135,7 @@ async def create_direct_sale(
                     subtotal_amount, discount_amount, taxable_amount,
                     cgst_amount, sgst_amount, igst_amount,
                     total_tax_amount, round_off_amount, total_amount,
-                    payment_status, payment_mode, notes,
+                    payment_status, payment_method, notes,
                     gst_type, place_of_supply
                 ) VALUES (
                     :invoice_number, :invoice_date, :due_date,
@@ -144,7 +144,7 @@ async def create_direct_sale(
                     :subtotal, :discount, :taxable,
                     :cgst, :sgst, :igst,
                     :tax_amount, :round_off, :total_amount,
-                    :payment_status, :payment_mode, :notes,
+                    :payment_status, :payment_method, :notes,
                     :gst_type, :place_of_supply
                 )
                 RETURNING invoice_id
@@ -167,8 +167,8 @@ async def create_direct_sale(
                 "tax_amount": tax_amount,
                 "round_off": round(final_total) - final_total,
                 "total_amount": final_total,
-                "payment_status": "paid" if sale_data.payment_mode == "cash" else "pending",
-                "payment_mode": sale_data.payment_mode,
+                "payment_status": "paid" if sale_data.payment_method == "cash" else "pending",
+                "payment_method": sale_data.payment_method,
                 "notes": sale_data.notes,
                 "gst_type": gst_type.value,
                 "place_of_supply": GSTService.get_state_name(GSTService.extract_state_code(sale_data.party_gst)) if sale_data.party_gst else None
@@ -239,7 +239,7 @@ async def create_direct_sale(
                 )
                 
         # Create ledger entry if credit sale
-        if sale_data.payment_mode == "credit":
+        if sale_data.payment_method == "credit":
             db.execute(
                 text("""
                     INSERT INTO party_ledger (
@@ -279,7 +279,7 @@ async def create_direct_sale(
             igst_amount=total_igst,
             total_amount=final_total,
             gst_type=gst_type.value,
-            payment_mode=sale_data.payment_mode,
+            payment_method=sale_data.payment_method,
             sale_status="completed",
             created_at=datetime.now()
         )
@@ -297,7 +297,7 @@ async def get_sales(
     party_id: Optional[int] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
-    payment_mode: Optional[str] = None,
+    payment_method: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -308,7 +308,7 @@ async def get_sales(
             SELECT i.invoice_id as sale_id, i.invoice_number, i.invoice_date as sale_date,
                    i.customer_id as party_id, i.customer_name as party_name, 
                    i.customer_gstin as party_gst, i.total_amount, i.payment_status,
-                   i.payment_mode, i.cgst_amount, i.sgst_amount, i.igst_amount,
+                   i.payment_method, i.cgst_amount, i.sgst_amount, i.igst_amount,
                    i.gst_type, i.created_at
             FROM invoices i
             WHERE i.order_id IS NULL  -- Direct sales without orders
@@ -330,9 +330,9 @@ async def get_sales(
             query += " AND i.invoice_date <= :to_date"
             params["to_date"] = to_date
             
-        if payment_mode:
-            query += " AND i.payment_mode = :payment_mode"
-            params["payment_mode"] = payment_mode
+        if payment_method:
+            query += " AND i.payment_method = :payment_method"
+            params["payment_method"] = payment_method
             
         query += " ORDER BY i.invoice_date DESC, i.created_at DESC LIMIT :limit OFFSET :skip"
         
@@ -353,6 +353,68 @@ async def get_sales(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/outstanding")
+async def get_outstanding_sales(
+    customer_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Get outstanding sales/invoices for payments
+    
+    - Returns unpaid and partially paid invoices
+    - Used by payment module to show outstanding amounts
+    """
+    try:
+        query = """
+            SELECT 
+                i.invoice_id, 
+                i.invoice_number,
+                i.invoice_date,
+                i.due_date,
+                i.total_amount,
+                COALESCE(i.paid_amount, 0) as paid_amount,
+                (i.total_amount - COALESCE(i.paid_amount, 0)) as pending_amount,
+                i.payment_status,
+                c.customer_id,
+                c.customer_name,
+                CASE 
+                    WHEN i.due_date < CURRENT_DATE THEN 
+                        CURRENT_DATE - i.due_date 
+                    ELSE 0 
+                END as days_overdue
+            FROM invoices i
+            JOIN customers c ON i.customer_id = c.customer_id
+            WHERE i.org_id = :org_id
+                AND i.payment_status IN ('unpaid', 'partial')
+        """
+        
+        params = {"org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f"}
+        
+        if customer_id:
+            query += " AND c.customer_id = :customer_id"
+            params["customer_id"] = customer_id
+            
+        query += " ORDER BY i.due_date, i.invoice_date"
+        
+        result = db.execute(text(query), params)
+        invoices = [dict(row._mapping) for row in result]
+        
+        return {
+            "invoices": invoices,
+            "total_outstanding": sum(inv["pending_amount"] for inv in invoices),
+            "count": len(invoices)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting outstanding invoices: {str(e)}")
+        # Return empty result instead of error to allow payment flow to continue
+        return {
+            "invoices": [],
+            "total_outstanding": 0,
+            "count": 0
+        }
+
+
 @router.get("/{sale_id}")
 async def get_sale_detail(
     sale_id: str,
@@ -370,7 +432,7 @@ async def get_sale_detail(
                        i.customer_gstin as party_gst, i.billing_address as party_address,
                        i.total_amount, i.subtotal_amount, i.discount_amount,
                        i.cgst_amount, i.sgst_amount, i.igst_amount,
-                       i.gst_type, i.payment_mode, i.payment_status as sale_status,
+                       i.gst_type, i.payment_method, i.payment_status as sale_status,
                        i.notes, i.created_at
                 FROM invoices i
                 WHERE i.invoice_id = :sale_id
@@ -535,63 +597,3 @@ async def get_sale_print_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/outstanding")
-async def get_outstanding_sales(
-    customer_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db)
-):
-    """
-    Get outstanding sales/invoices for payments
-    
-    - Returns unpaid and partially paid invoices
-    - Used by payment module to show outstanding amounts
-    """
-    try:
-        query = """
-            SELECT 
-                i.invoice_id, 
-                i.invoice_number,
-                i.invoice_date,
-                i.due_date,
-                i.total_amount,
-                COALESCE(i.paid_amount, 0) as paid_amount,
-                (i.total_amount - COALESCE(i.paid_amount, 0)) as pending_amount,
-                i.payment_status,
-                c.customer_id,
-                c.customer_name,
-                CASE 
-                    WHEN i.due_date < CURRENT_DATE THEN 
-                        CURRENT_DATE - i.due_date 
-                    ELSE 0 
-                END as days_overdue
-            FROM invoices i
-            JOIN customers c ON i.customer_id = c.customer_id
-            WHERE i.org_id = :org_id
-                AND i.payment_status IN ('unpaid', 'partial')
-        """
-        
-        params = {"org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f"}
-        
-        if customer_id:
-            query += " AND c.customer_id = :customer_id"
-            params["customer_id"] = customer_id
-            
-        query += " ORDER BY i.due_date, i.invoice_date"
-        
-        result = db.execute(text(query), params)
-        invoices = [dict(row._mapping) for row in result]
-        
-        return {
-            "invoices": invoices,
-            "total_outstanding": sum(inv["pending_amount"] for inv in invoices),
-            "count": len(invoices)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting outstanding invoices: {str(e)}")
-        # Return empty result instead of error to allow payment flow to continue
-        return {
-            "invoices": [],
-            "total_outstanding": 0,
-            "count": 0
-        }
