@@ -118,11 +118,10 @@ async def create_quick_sale_compatible(
         # Create order using enterprise service
         result = order_service.create_order(enterprise_request)
         
-        # Transform response to match old quick-sale format for backwards compatibility
-        legacy_response = _transform_to_legacy_response(result)
-        
         logger.info(f"Quick-sale compatibility order created: {result.order_number}")
-        return legacy_response
+        
+        # Return the full enterprise response (it already has all required fields)
+        return result
         
     except OrderServiceError as e:
         logger.error(f"Quick-sale compatibility error: {e.message}")
