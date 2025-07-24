@@ -78,7 +78,7 @@ async def create_quick_sale(
         # Step 1: Validate customer
         customer = db.execute(text("""
             SELECT customer_id, customer_name, gst_number as gstin, state, 
-                   state_code, credit_period_days as credit_days
+                   state_code, credit_period_days as credit_days, address, city, pincode
             FROM customers
             WHERE customer_id = :customer_id AND org_id = :org_id
         """), {
@@ -257,17 +257,23 @@ async def create_quick_sale(
         invoice_result = db.execute(text("""
             INSERT INTO invoices (
                 org_id, invoice_number, order_id, customer_id,
+                customer_name, customer_gstin,
+                billing_name, billing_address, billing_city, billing_state, billing_pincode,
                 invoice_date, due_date,
-                subtotal, discount_amount, taxable_amount,
-                cgst_amount, sgst_amount, igst_amount,
-                total_amount, payment_status,
+                gst_type, place_of_supply,
+                subtotal_amount, discount_amount, taxable_amount,
+                cgst_amount, sgst_amount, igst_amount, total_tax_amount,
+                total_amount, invoice_status,
                 created_at, updated_at
             ) VALUES (
                 :org_id, :invoice_number, :order_id, :customer_id,
+                :customer_name, :customer_gstin,
+                :billing_name, :billing_address, :billing_city, :billing_state, :billing_pincode,
                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
-                :subtotal, :discount_amount, :taxable_amount,
-                :cgst_amount, :sgst_amount, :igst_amount,
-                :total_amount, :payment_status,
+                :gst_type, :place_of_supply,
+                :subtotal_amount, :discount_amount, :taxable_amount,
+                :cgst_amount, :sgst_amount, :igst_amount, :total_tax_amount,
+                :total_amount, :invoice_status,
                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             ) RETURNING invoice_id
         """), {
@@ -275,14 +281,24 @@ async def create_quick_sale(
             "invoice_number": invoice_number,
             "order_id": order_id,
             "customer_id": sale.customer_id,
-            "subtotal": float(subtotal),
+            "customer_name": customer.customer_name,
+            "customer_gstin": customer.gstin or "",
+            "billing_name": customer.customer_name,
+            "billing_address": getattr(customer, 'address', None) or "N/A",
+            "billing_city": getattr(customer, 'city', None) or "N/A",
+            "billing_state": customer.state or "Karnataka",
+            "billing_pincode": getattr(customer, 'pincode', None) or "000000",
+            "gst_type": "cgst_sgst",  # Assuming intra-state
+            "place_of_supply": customer.state_code or "29",
+            "subtotal_amount": float(subtotal),
             "discount_amount": float(sale.discount_amount or 0),
             "taxable_amount": float(subtotal - (sale.discount_amount or 0)),
             "cgst_amount": float(cgst_amount),
             "sgst_amount": float(sgst_amount),
             "igst_amount": float(igst_amount),
+            "total_tax_amount": float(total_tax),
             "total_amount": float(final_amount),
-            "payment_status": "paid" if sale.payment_mode == "Cash" else "pending"
+            "invoice_status": "paid" if sale.payment_mode == "Cash" else "unpaid"
         })
         
         invoice_id = invoice_result.scalar()
@@ -293,25 +309,20 @@ async def create_quick_sale(
         
         if payment_amount > 0:
             db.execute(text("""
-                INSERT INTO billing_payments (
-                    org_id, order_id, invoice_id, customer_id,
-                    payment_date, payment_mode, amount,
-                    reference_number, notes,
-                    created_at
+                INSERT INTO invoice_payments (
+                    payment_reference, invoice_id,
+                    payment_date, payment_mode, payment_amount,
+                    notes
                 ) VALUES (
-                    :org_id, :order_id, :invoice_id, :customer_id,
-                    CURRENT_TIMESTAMP, :payment_mode, :amount,
-                    :reference_number, 'Quick sale payment',
-                    CURRENT_TIMESTAMP
+                    :payment_reference, :invoice_id,
+                    CURRENT_DATE, :payment_mode, :payment_amount,
+                    'Quick sale payment'
                 )
             """), {
-                "org_id": org_id,
-                "order_id": order_id,
+                "payment_reference": f"PAY-{invoice_number}",
                 "invoice_id": invoice_id,
-                "customer_id": sale.customer_id,
-                "payment_mode": sale.payment_mode,
-                "amount": float(payment_amount),
-                "reference_number": f"PAY-{invoice_number}"
+                "payment_mode": sale.payment_mode.lower(),
+                "payment_amount": float(payment_amount)
             })
             
             # Update order paid amount
@@ -328,7 +339,7 @@ async def create_quick_sale(
             if payment_amount >= final_amount:
                 db.execute(text("""
                     UPDATE invoices 
-                    SET payment_status = 'paid',
+                    SET invoice_status = 'paid',
                         paid_amount = :amount
                     WHERE invoice_id = :invoice_id
                 """), {
