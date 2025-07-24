@@ -92,8 +92,20 @@ async def create_quick_sale(
             raise HTTPException(status_code=404, detail="Customer not found")
         
         # Step 2: Create order (behind the scenes)
-        # Generate order number
-        order_number = f"ORD{datetime.now().strftime('%Y%m%d')}{sale.customer_id:04d}"
+        # Generate unique order number using sequence
+        seq_result = db.execute(text("""
+            SELECT nextval('order_number_seq'::regclass)
+        """)).scalar()
+        
+        if not seq_result:
+            # Fallback if sequence doesn't exist - use count + timestamp
+            count = db.execute(text("""
+                SELECT COUNT(*) + 1 FROM orders 
+                WHERE org_id = :org_id
+            """), {"org_id": org_id}).scalar()
+            order_number = f"ORD{datetime.now().strftime('%Y%m%d')}{count:06d}"
+        else:
+            order_number = f"ORD{datetime.now().strftime('%Y%m%d')}{seq_result:06d}"
         
         order_result = db.execute(text("""
             INSERT INTO orders (

@@ -356,3 +356,112 @@ async def update_invoice_pdf_status(
         db.rollback()
         logger.error(f"Error updating PDF URL: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update PDF URL")
+
+
+class InvoiceCalculateRequest(BaseModel):
+    """Request for calculating invoice totals"""
+    customer_id: int
+    items: list
+    delivery_type: Optional[str] = "PICKUP"
+    payment_mode: Optional[str] = "cash"
+    invoice_date: Optional[date] = None
+    discount_amount: Optional[Decimal] = 0
+    delivery_charges: Optional[Decimal] = 0
+
+
+class InvoiceCalculateResponse(BaseModel):
+    """Response with calculated totals"""
+    subtotal_amount: Decimal
+    discount_amount: Decimal
+    taxable_amount: Decimal
+    cgst_amount: Decimal
+    sgst_amount: Decimal
+    igst_amount: Decimal
+    total_tax_amount: Decimal
+    delivery_charges: Decimal
+    net_amount: Decimal
+    round_off: Decimal
+    final_amount: Decimal
+
+
+@router.post("/calculate-live", response_model=InvoiceCalculateResponse)
+async def calculate_invoice_totals(
+    request: InvoiceCalculateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Calculate invoice totals server-side for security and consistency
+    """
+    try:
+        # Get customer details for GST calculations
+        customer = db.execute(text("""
+            SELECT state, state_code FROM customers
+            WHERE customer_id = :customer_id
+        """), {"customer_id": request.customer_id}).first()
+        
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        
+        # Get company state (default Karnataka)
+        company_state = "Karnataka"
+        is_interstate = customer.state and customer.state.lower() != company_state.lower()
+        
+        subtotal = Decimal("0")
+        total_cgst = Decimal("0")
+        total_sgst = Decimal("0")
+        total_igst = Decimal("0")
+        
+        # Calculate totals for each item
+        for item in request.items:
+            quantity = Decimal(str(item.get("quantity", 0)))
+            rate = Decimal(str(item.get("rate", 0) or item.get("sale_price", 0) or item.get("unit_price", 0)))
+            discount_percent = Decimal(str(item.get("discount_percent", 0) or item.get("discount", 0)))
+            gst_percent = Decimal(str(item.get("gst_percent", 12) or item.get("tax_rate", 12) or 12))
+            
+            line_total = quantity * rate
+            discount_amount = line_total * discount_percent / 100
+            taxable_amount = line_total - discount_amount
+            
+            if is_interstate:
+                igst = taxable_amount * gst_percent / 100
+                total_igst += igst
+            else:
+                cgst = taxable_amount * gst_percent / 200  # Half of GST
+                sgst = taxable_amount * gst_percent / 200  # Half of GST
+                total_cgst += cgst
+                total_sgst += sgst
+            
+            subtotal += line_total
+        
+        # Apply invoice-level discount
+        invoice_discount = request.discount_amount or Decimal("0")
+        taxable_amount = subtotal - invoice_discount
+        
+        # Add delivery charges (not taxable)
+        delivery_charges = request.delivery_charges or Decimal("0")
+        
+        # Calculate final totals
+        total_tax = total_cgst + total_sgst + total_igst
+        net_amount = taxable_amount + total_tax + delivery_charges
+        
+        # Round off
+        final_amount = round(net_amount, 0)
+        round_off = final_amount - net_amount
+        
+        return InvoiceCalculateResponse(
+            subtotal_amount=subtotal,
+            discount_amount=invoice_discount,
+            taxable_amount=taxable_amount,
+            cgst_amount=total_cgst,
+            sgst_amount=total_sgst,
+            igst_amount=total_igst,
+            total_tax_amount=total_tax,
+            delivery_charges=delivery_charges,
+            net_amount=net_amount,
+            round_off=round_off,
+            final_amount=final_amount
+        )
+        
+    except Exception as e:
+        logger.error(f"Error calculating invoice: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Calculation failed: {str(e)}")
