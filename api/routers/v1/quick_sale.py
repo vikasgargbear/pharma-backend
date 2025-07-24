@@ -173,27 +173,26 @@ async def create_quick_sale(
             # Insert order item
             db.execute(text("""
                 INSERT INTO order_items (
-                    order_id, product_id, quantity, unit_price,
+                    order_id, product_id, quantity, selling_price,
                     discount_percent, discount_amount,
-                    taxable_amount, tax_percent, tax_amount,
-                    total_amount
+                    tax_percent, tax_amount,
+                    total_price
                 ) VALUES (
-                    :order_id, :product_id, :quantity, :unit_price,
+                    :order_id, :product_id, :quantity, :selling_price,
                     :discount_percent, :discount_amount,
-                    :taxable_amount, :tax_percent, :tax_amount,
-                    :total_amount
+                    :tax_percent, :tax_amount,
+                    :total_price
                 )
             """), {
                 "order_id": order_id,
                 "product_id": item.product_id,
                 "quantity": item.quantity,
-                "unit_price": float(unit_price),
+                "selling_price": float(unit_price),
                 "discount_percent": float(item.discount_percent or 0),
                 "discount_amount": float(discount_amount),
-                "taxable_amount": float(taxable_amount),
                 "tax_percent": float(gst_percent),
                 "tax_amount": float(tax_amount),
-                "total_amount": float(item_total)
+                "total_price": float(item_total)
             })
             
             # Update inventory (FIFO)
