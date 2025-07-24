@@ -1020,7 +1020,7 @@ class EnterpriseOrderService:
         
         payment_reference = f"PAY-{datetime.now().strftime('%Y%m%d')}-{order_id:06d}"
         
-        # Create payment record with both amount and payment_amount columns
+        # Create payment record in invoice_payments table
         self.db.execute(text("""
             INSERT INTO invoice_payments (
                 invoice_id, payment_reference,
@@ -1041,6 +1041,39 @@ class EnterpriseOrderService:
             "payment_amount": float(payment_amount),
             "transaction_reference": f"TXN-{payment_reference}"
         })
+        
+        # Also create entry in general payments table for complete ledger
+        payment_number = f"INV-PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}-{invoice_id}"
+        
+        # Get customer_id from invoice
+        customer_result = self.db.execute(text("""
+            SELECT customer_id FROM invoices WHERE invoice_id = :invoice_id
+        """), {"invoice_id": invoice_id}).first()
+        
+        if customer_result:
+            self.db.execute(text("""
+                INSERT INTO payments (
+                    org_id, payment_number, payment_date,
+                    customer_id, payment_type, amount,
+                    payment_mode, reference_number,
+                    payment_status, notes,
+                    created_at, updated_at
+                ) VALUES (
+                    :org_id, :payment_number, CURRENT_DATE,
+                    :customer_id, 'invoice_payment', :amount,
+                    :payment_mode, :reference_number,
+                    'completed', :notes,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+            """), {
+                "org_id": self.org_id,
+                "payment_number": payment_number,
+                "customer_id": customer_result.customer_id,
+                "amount": float(payment_amount),
+                "payment_mode": payment_mode.value,
+                "reference_number": invoice_number,
+                "notes": f"Payment for Invoice {invoice_number}"
+            })
         
         # Determine payment status
         payment_status = PaymentStatus.PARTIAL
