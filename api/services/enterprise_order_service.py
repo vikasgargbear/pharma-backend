@@ -1046,22 +1046,23 @@ class EnterpriseOrderService:
         
         payment_reference = f"PAY-{datetime.now().strftime('%Y%m%d')}-{order_id:06d}"
         
-        # Create payment record
+        # Create payment record with both amount and payment_amount columns
         self.db.execute(text("""
             INSERT INTO invoice_payments (
                 invoice_id, payment_reference,
-                payment_date, payment_mode, payment_amount,
+                payment_date, amount, payment_mode, payment_amount,
                 transaction_reference, status,
                 notes
             ) VALUES (
                 :invoice_id, :payment_reference,
-                CURRENT_DATE, :payment_mode, :payment_amount,
+                CURRENT_DATE, :amount, :payment_mode, :payment_amount,
                 :transaction_reference, 'completed',
                 'Order payment via enterprise API'
             )
         """), {
             "invoice_id": invoice_id,
             "payment_reference": payment_reference,
+            "amount": float(payment_amount),  # Both columns get same value
             "payment_mode": payment_mode.value,
             "payment_amount": float(payment_amount),
             "transaction_reference": f"TXN-{payment_reference}"
