@@ -882,35 +882,8 @@ class EnterpriseOrderService:
                     "batch_id": batch.batch_id
                 })
                 
-                # Create inventory movement record if table exists
-                try:
-                    self.db.execute(text("""
-                        INSERT INTO inventory_movements (
-                            org_id, movement_date, movement_type,
-                            product_id, batch_id, 
-                            quantity_out, balance_quantity,
-                            reference_type, reference_id, reference_number,
-                            performed_by
-                        ) VALUES (
-                            :org_id, CURRENT_TIMESTAMP, 'outward',
-                            :product_id, :batch_id,
-                            :quantity_out, :balance_quantity,
-                            'order', :reference_id, :reference_number,
-                            :performed_by
-                        )
-                    """), {
-                        "org_id": self.org_id,
-                        "product_id": item.product_id,
-                        "batch_id": batch.batch_id,
-                        "quantity_out": qty_from_batch,
-                        "balance_quantity": batch.quantity_available - qty_from_batch,
-                        "reference_id": str(order_id),
-                        "reference_number": order_number,
-                        "performed_by": None  # Could be set from request.created_by
-                    })
-                except Exception as e:
-                    # Log but don't fail if inventory_movements table doesn't exist
-                    self.logger.warning(f"Could not create inventory movement: {str(e)}")
+                # Inventory movements are handled by database triggers
+                # No need to manually insert movement records
                 
                 remaining_qty -= qty_from_batch
             
