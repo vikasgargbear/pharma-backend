@@ -42,7 +42,7 @@ class GeneralPaymentCreate(BaseModel):
     payment_date: date = Field(default_factory=date.today)
     customer_id: Optional[int] = None
     supplier_id: Optional[int] = None
-    payment_type: str = Field(..., pattern="^(advance_payment|invoice_payment|adjustment_entry)$")
+    payment_type: str = Field(..., pattern="^(advance_payment|invoice_payment|regular_payment|adjustment_entry)$")
     amount: Decimal = Field(..., gt=0)
     payment_mode: str = Field(..., pattern="^(cash|cheque|upi|bank_transfer|credit_adjustment)$")
     reference_number: Optional[str] = None

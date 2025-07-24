@@ -533,3 +533,65 @@ async def get_sale_print_data(
     except Exception as e:
         logger.error(f"Error getting print data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/outstanding")
+async def get_outstanding_sales(
+    customer_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Get outstanding sales/invoices for payments
+    
+    - Returns unpaid and partially paid invoices
+    - Used by payment module to show outstanding amounts
+    """
+    try:
+        query = """
+            SELECT 
+                i.invoice_id, 
+                i.invoice_number,
+                i.invoice_date,
+                i.due_date,
+                i.total_amount,
+                COALESCE(i.paid_amount, 0) as paid_amount,
+                (i.total_amount - COALESCE(i.paid_amount, 0)) as pending_amount,
+                i.payment_status,
+                c.customer_id,
+                c.customer_name,
+                CASE 
+                    WHEN i.due_date < CURRENT_DATE THEN 
+                        CURRENT_DATE - i.due_date 
+                    ELSE 0 
+                END as days_overdue
+            FROM invoices i
+            JOIN customers c ON i.customer_id = c.customer_id
+            WHERE i.org_id = :org_id
+                AND i.payment_status IN ('unpaid', 'partial')
+        """
+        
+        params = {"org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f"}
+        
+        if customer_id:
+            query += " AND c.customer_id = :customer_id"
+            params["customer_id"] = customer_id
+            
+        query += " ORDER BY i.due_date, i.invoice_date"
+        
+        result = db.execute(text(query), params)
+        invoices = [dict(row._mapping) for row in result]
+        
+        return {
+            "invoices": invoices,
+            "total_outstanding": sum(inv["pending_amount"] for inv in invoices),
+            "count": len(invoices)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting outstanding invoices: {str(e)}")
+        # Return empty result instead of error to allow payment flow to continue
+        return {
+            "invoices": [],
+            "total_outstanding": 0,
+            "count": 0
+        }
