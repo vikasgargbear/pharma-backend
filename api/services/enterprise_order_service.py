@@ -224,81 +224,85 @@ class EnterpriseOrderService:
             # Validate request
             self._validate_order_request(request)
             
-            # Start atomic transaction
-            with self.db.begin():
-                # Step 1: Validate and get customer with all fields
-                customer = self._validate_and_get_customer(request.customer_id)
-                
-                # Step 2: Validate credit limit if credit payment
-                if request.payment_mode == PaymentMode.CREDIT:
-                    self._validate_customer_credit(customer, request.payment_amount)
-                
-                # Step 3: Validate and process items with batch allocation
-                order_items = self._validate_and_process_items(request.items, customer)
-                
-                # Step 4: Calculate comprehensive totals
-                totals = self._calculate_comprehensive_totals(order_items, request, customer)
-                
-                # Set payment amount for cash orders
-                if request.payment_mode == PaymentMode.CASH and not request.payment_amount:
-                    request.payment_amount = totals['final_amount']
-                
-                # Step 5: Generate unique order number
-                order_number = self._generate_unique_order_number()
-                
-                # Step 6: Create complete order record
-                order_id = self._create_comprehensive_order_record(
-                    customer, order_number, totals, request, order_items
+            # Use existing transaction from FastAPI
+            # No need to begin a new transaction as FastAPI handles it
+            
+            # Step 1: Validate and get customer with all fields
+            customer = self._validate_and_get_customer(request.customer_id)
+            
+            # Step 2: Validate credit limit if credit payment
+            if request.payment_mode == PaymentMode.CREDIT:
+                self._validate_customer_credit(customer, request.payment_amount)
+            
+            # Step 3: Validate and process items with batch allocation
+            order_items = self._validate_and_process_items(request.items, customer)
+            
+            # Step 4: Calculate comprehensive totals
+            totals = self._calculate_comprehensive_totals(order_items, request, customer)
+            
+            # Set payment amount for cash orders
+            if request.payment_mode == PaymentMode.CASH and not request.payment_amount:
+                request.payment_amount = totals['final_amount']
+            
+            # Step 5: Generate unique order number
+            order_number = self._generate_unique_order_number()
+            
+            # Step 6: Create complete order record
+            order_id = self._create_comprehensive_order_record(
+                customer, order_number, totals, request, order_items
+            )
+            
+            # Step 7: Create order items with all fields
+            self._create_comprehensive_order_items(order_id, order_items)
+            
+            # Step 8: Update inventory with FIFO and create movements
+            self._update_inventory_with_movements(order_id, order_items, order_number)
+            
+            # Step 9: Create comprehensive invoice
+            invoice_id, invoice_number = self._create_comprehensive_invoice(
+                order_id, customer, order_items, totals, request
+            )
+            
+            # Step 10: Create invoice items
+            self._create_invoice_items(invoice_id, order_items)
+            
+            # Step 11: Process payment if provided
+            payment_status = PaymentStatus.PENDING
+            invoice_status = InvoiceStatus.GENERATED
+            
+            if request.payment_amount and request.payment_amount > 0:
+                payment_status, invoice_status = self._process_comprehensive_payment(
+                    order_id, invoice_id, request.payment_amount, 
+                    request.payment_mode, totals['final_amount'], invoice_number
                 )
-                
-                # Step 7: Create order items with all fields
-                self._create_comprehensive_order_items(order_id, order_items)
-                
-                # Step 8: Update inventory with FIFO and create movements
-                self._update_inventory_with_movements(order_id, order_items, order_number)
-                
-                # Step 9: Create comprehensive invoice
-                invoice_id, invoice_number = self._create_comprehensive_invoice(
-                    order_id, customer, order_items, totals, request
-                )
-                
-                # Step 10: Create invoice items
-                self._create_invoice_items(invoice_id, order_items)
-                
-                # Step 11: Process payment if provided
-                payment_status = PaymentStatus.PENDING
-                invoice_status = InvoiceStatus.GENERATED
-                
-                if request.payment_amount and request.payment_amount > 0:
-                    payment_status, invoice_status = self._process_comprehensive_payment(
-                        order_id, invoice_id, request.payment_amount, 
-                        request.payment_mode, totals['final_amount'], invoice_number
-                    )
-                
-                # Step 12: Update customer outstanding
-                self._update_customer_outstanding(customer.customer_id, totals['final_amount'])
-                
-                # Step 13: Create loyalty points if applicable
-                self._create_loyalty_points(customer.customer_id, totals['final_amount'])
-                
-                self.logger.info(f"Enterprise order {order_number} created successfully")
-                
-                return OrderCreationResponse(
-                    success=True,
-                    order_id=order_id,
-                    order_number=order_number,
-                    invoice_id=invoice_id,
-                    invoice_number=invoice_number,
-                    total_amount=totals['final_amount'],
-                    payment_status=payment_status.value,
-                    invoice_status=invoice_status.value,
-                    message=f"Order {order_number} created successfully",
-                    created_at=datetime.now(),
-                    customer_name=customer.customer_name,
-                    items_count=len(order_items),
-                    tax_amount=totals['total_tax'],
-                    delivery_date=request.delivery_date
-                )
+            
+            # Step 12: Update customer outstanding
+            self._update_customer_outstanding(customer.customer_id, totals['final_amount'])
+            
+            # Step 13: Create loyalty points if applicable
+            self._create_loyalty_points(customer.customer_id, totals['final_amount'])
+            
+            # Commit the transaction
+            self.db.commit()
+            
+            self.logger.info(f"Enterprise order {order_number} created successfully")
+            
+            return OrderCreationResponse(
+                success=True,
+                order_id=order_id,
+                order_number=order_number,
+                invoice_id=invoice_id,
+                invoice_number=invoice_number,
+                total_amount=totals['final_amount'],
+                payment_status=payment_status.value,
+                invoice_status=invoice_status.value,
+                message=f"Order {order_number} created successfully",
+                created_at=datetime.now(),
+                customer_name=customer.customer_name,
+                items_count=len(order_items),
+                tax_amount=totals['total_tax'],
+                delivery_date=request.delivery_date
+            )
                 
         except OrderServiceError:
             self.db.rollback()
