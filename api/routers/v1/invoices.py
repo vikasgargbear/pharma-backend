@@ -402,9 +402,21 @@ async def calculate_invoice_totals(
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
         
-        # Get company state (default Karnataka)
-        company_state = "Karnataka"
-        is_interstate = customer.state and customer.state.lower() != company_state.lower()
+        # Get company/seller state from organization settings
+        org_state_result = db.execute(text("""
+            SELECT business_settings->>'state' as state,
+                   business_settings->>'state_code' as state_code
+            FROM organizations
+            LIMIT 1
+        """)).first()
+        
+        # Default to Karnataka if not set
+        company_state = org_state_result.state if org_state_result and org_state_result.state else "Karnataka"
+        company_state_code = org_state_result.state_code if org_state_result and org_state_result.state_code else "29"
+        
+        # If customer has no state, use company state (same state transaction)
+        customer_state = customer.state if customer.state else company_state
+        is_interstate = customer_state.lower() != company_state.lower()
         
         subtotal = Decimal("0")
         total_cgst = Decimal("0")
