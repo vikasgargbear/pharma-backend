@@ -51,6 +51,7 @@ from .routers.v1 import (
 )
 from .routers.v1.stock_receive import router as stock_receive_router
 from .routers.v1.direct_invoice import router as direct_invoice_router
+from .routers.v1.invoice_with_order import router as invoice_with_order_router
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -219,6 +220,7 @@ app.include_router(credit_debit_notes_router)
 app.include_router(sales_router)
 app.include_router(stock_receive_router)
 app.include_router(direct_invoice_router)
+app.include_router(invoice_with_order_router)
 
 # Debug router (only in debug mode)
 if settings.DEBUG:
