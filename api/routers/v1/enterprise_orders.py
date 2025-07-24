@@ -29,20 +29,6 @@ router = APIRouter(
     tags=["enterprise-orders"]
 )
 
-@router.get("/test-products")
-async def get_test_products(db: Session = Depends(get_db)):
-    """Get a few products for testing"""
-    result = db.execute(text("""
-        SELECT p.product_id, p.product_name, p.sale_price, b.quantity_available
-        FROM products p
-        LEFT JOIN batches b ON p.product_id = b.product_id
-        WHERE p.org_id = '12de5e22-eee7-4d25-b3a7-d16d01c6170f'
-        AND b.quantity_available > 0
-        LIMIT 5
-    """)).fetchall()
-    
-    return [{"product_id": r.product_id, "name": r.product_name, "price": float(r.sale_price or 0), "stock": r.quantity_available} for r in result]
-
 # Backwards compatibility endpoint that maps to enterprise service
 @router.post("/", response_model=OrderCreationResponse)
 async def create_enterprise_order(
