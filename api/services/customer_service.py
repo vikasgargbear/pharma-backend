@@ -43,7 +43,7 @@ class CustomerService:
         return f"{prefix}{next_num:04d}"
     
     @staticmethod
-    def validate_credit_limit(db: Session, customer_id: int, order_amount: Decimal, org_id: UUID = None) -> Dict[str, Any]:
+    def validate_credit_limit(db: Session, customer_id: int, order_amount: Decimal, org_id: "UUID" = None) -> Dict[str, Any]:
         """Check if customer has sufficient credit limit"""
         # Get customer details with outstanding
         if org_id:
