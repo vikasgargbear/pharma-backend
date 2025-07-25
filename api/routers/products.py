@@ -11,6 +11,7 @@ import time
 
 from ..core.crud_base import create_crud
 from ..core.security import ResourceNotFoundError
+from ..core.feature_enforcement import get_organization_features, enforce_expiry_date_mandatory
 from ..database import get_db
 from ..models import Product
 from ..base_schemas import ProductCreate as BaseProductCreate
@@ -144,7 +145,13 @@ def create_product(product: dict, db: Session = Depends(get_db)):
             
             print(f"Creating batch - quantity_received is truthy: {quantity_received}")
             
-            # If no expiry date provided, set a default (2 years from now)
+            # Get organization features to check if expiry date is mandatory
+            org_features = get_organization_features(db, product_dict['org_id'])
+            
+            # Enforce expiry date if mandatory
+            enforce_expiry_date_mandatory(org_features, expiry_date, "batch")
+            
+            # If no expiry date provided and not mandatory, set a default (2 years from now)
             if not expiry_date:
                 expiry_date = (datetime.now() + timedelta(days=730)).date()
                 print(f"No expiry date provided, using default: {expiry_date}")

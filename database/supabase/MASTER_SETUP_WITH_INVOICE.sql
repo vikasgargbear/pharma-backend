@@ -44,6 +44,9 @@
 -- Complete Invoice Module Fix (includes all fixes)
 \i 12_complete_invoice_migrations.sql
 
+-- Feature Audit Log
+\i 13_feature_audit_log.sql
+
 -- Financial Module (if needed)
 -- \i FINANCIAL_MODULE/01_financial_core_schema.sql
 -- \i FINANCIAL_MODULE/01b_financial_schema.sql

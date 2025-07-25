@@ -9,6 +9,7 @@ from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 import logging
+from api.core.feature_enforcement import get_organization_features, enforce_expiry_date_mandatory
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,6 +38,32 @@ def receive_purchase_items_v2(
             raise HTTPException(status_code=400, detail="Purchase already received")
         
         received_items = receive_data.get("items", [])
+        
+        # Get organization features
+        org_features = get_organization_features(db, purchase.org_id)
+        
+        # Check if expiry date is mandatory for all items
+        if org_features.get("expiryDateMandatory", True):
+            for item in received_items:
+                if item.get("received_quantity", 0) > 0 and not item.get("expiry_date"):
+                    # Get product name for better error message
+                    product_result = db.execute(
+                        text("""
+                            SELECT p.product_name 
+                            FROM purchase_items pi
+                            JOIN products p ON pi.product_id = p.product_id
+                            WHERE pi.purchase_item_id = :item_id
+                        """),
+                        {"item_id": item.get("purchase_item_id")}
+                    ).first()
+                    
+                    product_name = product_result.product_name if product_result else "product"
+                    
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Expiry date is mandatory for '{product_name}'. "
+                               f"Please provide expiry date for all items being received."
+                    )
         
         # Update purchase items with received quantities
         for item in received_items:
