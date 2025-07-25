@@ -30,7 +30,7 @@ class ChallanItemRequest(BaseModel):
     expiry_date: Optional[date] = None
     ordered_quantity: int
     dispatched_quantity: int
-    unit_price: Decimal = Field(decimal_places=2)
+    unit_price: Decimal = Field(ge=0)
     package_type: Optional[str] = None
     packages_count: Optional[int] = None
 
@@ -44,7 +44,7 @@ class ChallanCreationRequest(BaseModel):
     driver_phone: Optional[str] = None
     transport_company: Optional[str] = None
     lr_number: Optional[str] = None
-    freight_amount: Optional[Decimal] = Field(default=0, decimal_places=2)
+    freight_amount: Optional[Decimal] = Field(default=0, ge=0)
     delivery_address: str
     delivery_city: str
     delivery_state: str

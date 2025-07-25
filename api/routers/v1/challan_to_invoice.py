@@ -25,8 +25,8 @@ class ChallanToInvoiceRequest(BaseModel):
     challan_ids: List[int] = Field(..., description="List of challan IDs to convert")
     invoice_date: Optional[date] = Field(default=None, description="Invoice date (defaults to today)")
     payment_mode: Optional[str] = Field(default="credit", description="Payment mode")
-    payment_amount: Optional[Decimal] = Field(default=0, decimal_places=2)
-    discount_amount: Optional[Decimal] = Field(default=0, decimal_places=2)
+    payment_amount: Optional[Decimal] = Field(default=0, ge=0)
+    discount_amount: Optional[Decimal] = Field(default=0, ge=0)
     notes: Optional[str] = None
 
 class ChallanToInvoiceResponse(BaseModel):

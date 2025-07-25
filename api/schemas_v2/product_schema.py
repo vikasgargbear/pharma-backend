@@ -25,10 +25,10 @@ class ProductBase(BaseModel):
     salt_composition: Optional[str] = None
     
     # Pricing
-    mrp: Decimal = Field(..., decimal_places=2)
-    sale_price: Decimal = Field(..., decimal_places=2)
-    cost_price: Decimal = Field(..., decimal_places=2)
-    gst_percent: Decimal = Field(..., decimal_places=2)
+    mrp: Decimal = Field(..., ge=0)
+    sale_price: Decimal = Field(..., ge=0)
+    cost_price: Decimal = Field(..., ge=0)
+    gst_percent: Decimal = Field(..., ge=0, le=100)
     
     # Units
     base_unit: str = Field(..., description="Base inventory unit (Tablet, ML, Gm)")
