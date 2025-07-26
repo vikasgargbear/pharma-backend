@@ -49,6 +49,7 @@ from .routers.v1 import (
     purchase_returns_router, stock_movements_router, party_ledger_router,
     credit_debit_notes_router, sales_router, enterprise_orders_router
 )
+from .routers.v1.org_users import router as org_users_router
 from .routers.v1.stock_receive import router as stock_receive_router
 from .routers.v1.direct_invoice import router as direct_invoice_router
 from .routers.v1.invoice_with_order import router as invoice_with_order_router
@@ -210,6 +211,7 @@ app.include_router(payments_router)
 app.include_router(invoices_router)
 app.include_router(order_items_router)
 app.include_router(users_router)
+app.include_router(org_users_router)  # 🚀 NEW: Organization users management
 app.include_router(suppliers_router)
 app.include_router(purchases_router)
 app.include_router(delivery_challan_router)
