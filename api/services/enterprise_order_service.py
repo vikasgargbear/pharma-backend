@@ -277,7 +277,7 @@ class EnterpriseOrderService:
             """), {
                 "order_id": order_id,
                 "invoice_number": invoice_number,
-                "invoice_date": request.invoice_date or datetime.now().date()
+                "invoice_date": datetime.now().date()
             })
             
             # Step 11: Process payment if provided
