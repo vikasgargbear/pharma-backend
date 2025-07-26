@@ -58,6 +58,7 @@ from .routers.v1.enterprise_delivery_challan import router as enterprise_deliver
 from .routers.v1.challan_to_invoice import router as challan_to_invoice_router
 from .routers.v1.organization_settings import router as organization_settings_router
 from .routers.v1.auth import router as auth_router
+from .routers.v1.sales_orders import router as sales_orders_router
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -234,6 +235,7 @@ app.include_router(enterprise_delivery_challan_router)  # 🚀 NEW: Enterprise-g
 app.include_router(challan_to_invoice_router)  # 🚀 NEW: Create invoices from delivered challans
 app.include_router(organization_settings_router)  # 🚀 NEW: Organization settings and profile management
 app.include_router(auth_router)  # 🚀 NEW: JWT-based authentication with org context
+app.include_router(sales_orders_router)  # 🚀 NEW: Enterprise sales order management
 
 # Debug router (only in debug mode)
 if settings.DEBUG:
