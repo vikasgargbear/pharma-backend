@@ -192,11 +192,11 @@ async def list_sales_orders(
             SELECT o.*, c.customer_name, c.customer_code, c.phone as customer_phone
             FROM orders o
             JOIN customers c ON o.customer_id = c.customer_id
-            WHERE o.org_id = :org_id AND o.order_type = 'sales_order'
+            WHERE o.org_id = :org_id AND o.order_type = 'sales'
         """
         count_query = """
             SELECT COUNT(*) FROM orders o
-            WHERE o.org_id = :org_id AND o.order_type = 'sales_order'
+            WHERE o.org_id = :org_id AND o.order_type = 'sales'
         """
         
         params = {"org_id": DEFAULT_ORG_ID}
@@ -283,7 +283,7 @@ async def get_sales_order(
             SELECT o.*, c.customer_name, c.customer_code, c.phone as customer_phone
             FROM orders o
             JOIN customers c ON o.customer_id = c.customer_id
-            WHERE o.order_id = :id AND o.org_id = :org_id AND o.order_type = 'sales_order'
+            WHERE o.order_id = :id AND o.org_id = :org_id AND o.order_type = 'sales'
         """), {"id": order_id, "org_id": DEFAULT_ORG_ID})
         
         order = result.fetchone()
@@ -327,7 +327,7 @@ async def update_sales_order(
         # Check if order exists and is editable
         existing = db.execute(text("""
             SELECT order_status FROM orders 
-            WHERE order_id = :id AND org_id = :org_id AND order_type = 'sales_order'
+            WHERE order_id = :id AND org_id = :org_id AND order_type = 'sales'
         """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).fetchone()
         
         if not existing:
@@ -389,7 +389,7 @@ async def approve_sales_order(
         # Check order exists and is pending
         order = db.execute(text("""
             SELECT order_status, customer_id FROM orders 
-            WHERE order_id = :id AND org_id = :org_id AND order_type = 'sales_order'
+            WHERE order_id = :id AND org_id = :org_id AND order_type = 'sales'
         """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).fetchone()
         
         if not order:
@@ -476,7 +476,7 @@ async def convert_to_invoice(
         # Check order exists and is approved
         order = db.execute(text("""
             SELECT order_status, order_number FROM orders 
-            WHERE order_id = :id AND org_id = :org_id AND order_type = 'sales_order'
+            WHERE order_id = :id AND org_id = :org_id AND order_type = 'sales'
         """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).fetchone()
         
         if not order:
@@ -528,7 +528,7 @@ async def convert_to_challan(
         # Check order exists and is approved
         order = db.execute(text("""
             SELECT order_status FROM orders 
-            WHERE order_id = :id AND org_id = :org_id AND order_type = 'sales_order'
+            WHERE order_id = :id AND org_id = :org_id AND order_type = 'sales'
         """), {"id": order_id, "org_id": DEFAULT_ORG_ID}).fetchone()
         
         if not order:
@@ -615,7 +615,7 @@ async def get_sales_order_dashboard(db: Session = Depends(get_db)):
                 COALESCE(SUM(final_amount), 0) as total_value,
                 COALESCE(SUM(final_amount) FILTER (WHERE order_date = CURRENT_DATE), 0) as today_value
             FROM orders 
-            WHERE org_id = :org_id AND order_type = 'sales_order'
+            WHERE org_id = :org_id AND order_type = 'sales'
         """), {"org_id": DEFAULT_ORG_ID}).fetchone()
         
         return {
