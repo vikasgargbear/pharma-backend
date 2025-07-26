@@ -266,6 +266,20 @@ class EnterpriseOrderService:
             # Step 10: Create invoice items
             self._create_invoice_items(invoice_id, order_items)
             
+            # Step 10.5: Update order with invoice details
+            self.db.execute(text("""
+                UPDATE orders
+                SET invoice_number = :invoice_number,
+                    invoice_date = :invoice_date,
+                    order_status = 'invoiced',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE order_id = :order_id
+            """), {
+                "order_id": order_id,
+                "invoice_number": invoice_number,
+                "invoice_date": request.invoice_date or datetime.now().date()
+            })
+            
             # Step 11: Process payment if provided
             payment_status = PaymentStatus.PENDING
             invoice_status = InvoiceStatus.GENERATED

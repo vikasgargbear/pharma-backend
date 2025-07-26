@@ -134,13 +134,19 @@ class InvoiceService:
         # Copy order items to invoice items
         InvoiceService.copy_order_items_to_invoice(db, order_id, invoice_id)
         
-        # Update order status
+        # Update order status and invoice details
         db.execute(text("""
             UPDATE orders
             SET order_status = 'invoiced',
+                invoice_number = :invoice_number,
+                invoice_date = :invoice_date,
                 updated_at = CURRENT_TIMESTAMP
             WHERE order_id = :order_id
-        """), {"order_id": order_id})
+        """), {
+            "order_id": order_id,
+            "invoice_number": invoice_number,
+            "invoice_date": invoice_date
+        })
         
         return {
             "invoice_id": invoice_id,
