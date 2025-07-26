@@ -84,7 +84,7 @@ async def create_sales_order(
         order_data.update({
             "order_number": order_number,
             "order_status": "pending",  # Sales orders start as pending
-            "order_type": "sales_order",  # Explicitly mark as sales order
+            "order_type": "sales",  # Must match schema pattern
             "customer_name": customer.customer_name,
             "customer_phone": customer.phone,
             "subtotal_amount": totals["subtotal"],
