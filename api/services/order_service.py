@@ -213,24 +213,10 @@ class OrderService:
                         "batch_id": item['batch_id']
                     })
                     
-                    # Record inventory movement
-                    db.execute(text("""
-                        INSERT INTO inventory_movements (
-                            org_id, product_id, batch_id, movement_type, movement_date,
-                            quantity_out, reference_type, reference_id,
-                            created_at, updated_at
-                        ) VALUES (
-                            :org_id, :product_id, :batch_id, 'sale', CURRENT_DATE,
-                            :quantity_out, 'order', :order_id,
-                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                        )
-                    """), {
-                        "org_id": org_id,
-                        "product_id": item['product_id'],
-                        "batch_id": item['batch_id'],
-                        "quantity_out": item['quantity'],
-                        "order_id": order_id
-                    })
+                    # REMOVED: Orders should NOT deduct inventory
+                    # Only invoices should deduct inventory
+                    # This prevents inventory issues when creating challans
+                    pass
                 else:
                     # Auto-allocate using FIFO
                     batches = db.execute(text("""
@@ -260,24 +246,9 @@ class OrderService:
                             "batch_id": batch.batch_id
                         })
                         
-                        # Record movement
-                        db.execute(text("""
-                            INSERT INTO inventory_movements (
-                                org_id, product_id, batch_id, movement_type, movement_date,
-                                quantity_out, reference_type, reference_id,
-                                created_at, updated_at
-                            ) VALUES (
-                                :org_id, :product_id, :batch_id, 'sale', CURRENT_DATE,
-                                :quantity_out, 'order', :order_id,
-                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                            )
-                        """), {
-                            "org_id": org_id,
-                            "product_id": item['product_id'],
-                            "batch_id": batch.batch_id,
-                            "quantity_out": allocation,
-                            "order_id": order_id
-                        })
+                        # REMOVED: Orders should NOT deduct inventory
+                        # Only invoices should deduct inventory
+                        pass
                         
                         remaining_quantity -= allocation
             
