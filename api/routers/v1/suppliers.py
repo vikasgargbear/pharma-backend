@@ -9,7 +9,7 @@ from sqlalchemy import text
 import logging
 
 from ...database import get_db
-from ...models.supplier import Supplier
+from ...models import Supplier
 from ...core.crud_base import create_crud
 from ...schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse, SupplierListResponse
 from uuid import UUID
