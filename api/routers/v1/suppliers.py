@@ -71,7 +71,7 @@ def create_supplier(supplier_data: SupplierCreate, db: Session = Depends(get_db)
         org_id = UUID("12de5e22-eee7-4d25-b3a7-d16d01c6170f")  # Default org for now
         
         # Convert Pydantic model to dict and handle field mappings
-        supplier_dict = supplier_data.dict(by_alias=True, exclude_unset=True)
+        supplier_dict = supplier_data.dict(exclude_unset=True)
         
         # Add org_id
         supplier_dict['org_id'] = org_id
@@ -81,11 +81,30 @@ def create_supplier(supplier_data: SupplierCreate, db: Session = Depends(get_db)
             count = db.query(Supplier).filter(Supplier.org_id == org_id).count()
             supplier_dict['supplier_code'] = f"SUP-{count + 1:04d}"
         
+        # Handle field mappings from frontend to database
+        field_mappings = {
+            'gstin': 'gst_number',
+            'payment_terms': 'credit_period_days',
+            'bank_account_no': 'account_number',
+            'bank_ifsc_code': 'ifsc_code',
+            'drug_license_no': 'drug_license_number'
+        }
+        
+        for frontend_field, db_field in field_mappings.items():
+            if frontend_field in supplier_dict:
+                supplier_dict[db_field] = supplier_dict.pop(frontend_field)
+        
         # Handle address fields
         if 'address_line1' in supplier_dict:
-            supplier_dict['address'] = supplier_dict.pop('address_line1')
-            if 'address_line2' in supplier_dict and supplier_dict['address_line2']:
-                supplier_dict['address'] += f", {supplier_dict.pop('address_line2')}"
+            address = supplier_dict.pop('address_line1')
+            if 'address_line2' in supplier_dict:
+                address_line2 = supplier_dict.pop('address_line2')
+                if address_line2:
+                    address += f", {address_line2}"
+            supplier_dict['address'] = address
+        else:
+            # Remove address_line2 if present without address_line1
+            supplier_dict.pop('address_line2', None)
         
         # Create supplier
         supplier = Supplier(**supplier_dict)
