@@ -9,8 +9,10 @@ from sqlalchemy import text
 import logging
 
 from ...database import get_db
-from ...models import Supplier
+from ...models.supplier import Supplier
 from ...core.crud_base import create_crud
+from ...schemas.supplier import SupplierCreate, SupplierUpdate, SupplierResponse, SupplierListResponse
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +63,32 @@ def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
         logger.error(f"Error fetching supplier {supplier_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get supplier: {str(e)}")
 
-@router.post("/")
-def create_supplier(supplier_data: dict, db: Session = Depends(get_db)):
+@router.post("/", response_model=SupplierResponse)
+def create_supplier(supplier_data: SupplierCreate, db: Session = Depends(get_db)):
     """Create a new supplier"""
     try:
-        supplier = Supplier(**supplier_data)
+        # Get org_id from somewhere (should come from auth in production)
+        org_id = UUID("12de5e22-eee7-4d25-b3a7-d16d01c6170f")  # Default org for now
+        
+        # Convert Pydantic model to dict and handle field mappings
+        supplier_dict = supplier_data.dict(by_alias=True, exclude_unset=True)
+        
+        # Add org_id
+        supplier_dict['org_id'] = org_id
+        
+        # Generate supplier code if not provided
+        if not supplier_dict.get('supplier_code'):
+            count = db.query(Supplier).filter(Supplier.org_id == org_id).count()
+            supplier_dict['supplier_code'] = f"SUP-{count + 1:04d}"
+        
+        # Handle address fields
+        if 'address_line1' in supplier_dict:
+            supplier_dict['address'] = supplier_dict.pop('address_line1')
+            if 'address_line2' in supplier_dict and supplier_dict['address_line2']:
+                supplier_dict['address'] += f", {supplier_dict.pop('address_line2')}"
+        
+        # Create supplier
+        supplier = Supplier(**supplier_dict)
         db.add(supplier)
         db.commit()
         db.refresh(supplier)
@@ -75,15 +98,16 @@ def create_supplier(supplier_data: dict, db: Session = Depends(get_db)):
         logger.error(f"Error creating supplier: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create supplier: {str(e)}")
 
-@router.put("/{supplier_id}")
-def update_supplier(supplier_id: int, supplier_data: dict, db: Session = Depends(get_db)):
+@router.put("/{supplier_id}", response_model=SupplierResponse)
+def update_supplier(supplier_id: int, supplier_data: SupplierUpdate, db: Session = Depends(get_db)):
     """Update a supplier"""
     try:
         supplier = db.query(Supplier).filter(Supplier.supplier_id == supplier_id).first()
         if not supplier:
             raise HTTPException(status_code=404, detail="Supplier not found")
         
-        for key, value in supplier_data.items():
+        update_dict = supplier_data.dict(exclude_unset=True)
+        for key, value in update_dict.items():
             setattr(supplier, key, value)
         
         db.commit()
