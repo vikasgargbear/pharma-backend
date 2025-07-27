@@ -17,21 +17,21 @@ class SupplierBase(BaseModel):
     
     # Contact information
     contact_person: Optional[str] = Field(None, max_length=100)
-    phone: str = Field(..., regex=r'^[6-9]\d{9}$')
-    alternate_phone: Optional[str] = Field(None, regex=r'^[6-9]\d{9}$')
-    email: Optional[str] = Field(None, regex=r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    phone: str = Field(..., pattern=r'^[6-9]\d{9}$')
+    alternate_phone: Optional[str] = Field(None, pattern=r'^[6-9]\d{9}$')
+    email: Optional[str] = Field(None, pattern=r'^[\w\.-]+@[\w\.-]+\.\w+$')
     
     # Address
     address_line1: Optional[str] = Field(None, max_length=255, alias="address")
     address_line2: Optional[str] = Field(None, max_length=255)
     city: str = Field(..., min_length=1, max_length=100)
     state: str = Field(..., min_length=1, max_length=100)
-    pincode: Optional[str] = Field(None, regex=r'^\d{6}$')
+    pincode: Optional[str] = Field(None, pattern=r'^\d{6}$')
     country: str = Field(default="India", max_length=50)
     
     # Regulatory
-    gstin: Optional[str] = Field(None, alias="gst_number", regex=r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$')
-    pan_number: Optional[str] = Field(None, regex=r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$')
+    gstin: Optional[str] = Field(None, alias="gst_number", pattern=r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$')
+    pan_number: Optional[str] = Field(None, pattern=r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$')
     drug_license_no: Optional[str] = Field(None, alias="drug_license_number", max_length=100)
     fssai_license_no: Optional[str] = Field(None, max_length=100)
     
@@ -44,7 +44,7 @@ class SupplierBase(BaseModel):
     # Banking
     bank_name: Optional[str] = Field(None, max_length=100)
     bank_account_no: Optional[str] = Field(None, alias="account_number", max_length=50)
-    bank_ifsc_code: Optional[str] = Field(None, alias="ifsc_code", regex=r'^[A-Z]{4}0[A-Z0-9]{6}$')
+    bank_ifsc_code: Optional[str] = Field(None, alias="ifsc_code", pattern=r'^[A-Z]{4}0[A-Z0-9]{6}$')
     
     # Additional
     notes: Optional[str] = None
@@ -81,19 +81,19 @@ class SupplierUpdate(BaseModel):
     
     # Contact information
     contact_person: Optional[str] = Field(None, max_length=100)
-    phone: Optional[str] = Field(None, regex=r'^[6-9]\d{9}$')
-    alternate_phone: Optional[str] = Field(None, regex=r'^[6-9]\d{9}$')
-    email: Optional[str] = Field(None, regex=r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    phone: Optional[str] = Field(None, pattern=r'^[6-9]\d{9}$')
+    alternate_phone: Optional[str] = Field(None, pattern=r'^[6-9]\d{9}$')
+    email: Optional[str] = Field(None, pattern=r'^[\w\.-]+@[\w\.-]+\.\w+$')
     
     # Address
     address: Optional[str] = Field(None, max_length=255)
     city: Optional[str] = Field(None, min_length=1, max_length=100)
     state: Optional[str] = Field(None, min_length=1, max_length=100)
-    pincode: Optional[str] = Field(None, regex=r'^\d{6}$')
+    pincode: Optional[str] = Field(None, pattern=r'^\d{6}$')
     
     # Regulatory
-    gst_number: Optional[str] = Field(None, regex=r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$')
-    pan_number: Optional[str] = Field(None, regex=r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$')
+    gst_number: Optional[str] = Field(None, pattern=r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$')
+    pan_number: Optional[str] = Field(None, pattern=r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$')
     drug_license_number: Optional[str] = Field(None, max_length=100)
     
     # Commercial terms
@@ -104,7 +104,7 @@ class SupplierUpdate(BaseModel):
     # Banking
     bank_name: Optional[str] = Field(None, max_length=100)
     account_number: Optional[str] = Field(None, max_length=50)
-    ifsc_code: Optional[str] = Field(None, regex=r'^[A-Z]{4}0[A-Z0-9]{6}$')
+    ifsc_code: Optional[str] = Field(None, pattern=r'^[A-Z]{4}0[A-Z0-9]{6}$')
     
     # Additional
     notes: Optional[str] = None
