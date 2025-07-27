@@ -159,6 +159,10 @@ class OrderCreationRequest(BaseModel):
     delivery_type: str = Field(default="pickup")  # pickup, delivery
     delivery_address: Optional[str] = None
     
+    # Document References (NEW)
+    order_id: Optional[int] = None  # Reference to existing order
+    challan_id: Optional[int] = None  # Reference to existing challan
+    
     # Amounts
     discount_amount: Decimal = Field(default=0, ge=0)
     delivery_charges: Decimal = Field(default=0, ge=0)
@@ -234,6 +238,10 @@ class EnterpriseOrderService:
             if request.payment_mode == PaymentMode.CREDIT:
                 self._validate_customer_credit(customer, request.payment_amount)
             
+            # Step 2.5: If challan_id is provided, validate it exists and hasn't been invoiced
+            if request.challan_id:
+                self._validate_challan_for_invoice(request.challan_id)
+            
             # Step 3: Validate and process items with batch allocation
             order_items = self._validate_and_process_items(request.items, customer)
             
@@ -295,6 +303,10 @@ class EnterpriseOrderService:
             
             # Step 13: Create loyalty points if applicable
             self._create_loyalty_points(customer.customer_id, totals['final_amount'])
+            
+            # Step 14: If challan_id provided, mark it as converted
+            if request.challan_id:
+                self._mark_challan_as_converted(request.challan_id, invoice_id)
             
             # Commit the transaction
             self.db.commit()
@@ -403,6 +415,48 @@ class EnterpriseOrderService:
                         "order_amount": float(order_amount)
                     }
                 )
+    
+    def _validate_challan_for_invoice(self, challan_id: int):
+        """Validate challan exists and hasn't been converted to invoice"""
+        result = self.db.execute(
+            text("""
+                SELECT challan_id, converted_to_invoice, customer_id, challan_number
+                FROM challans
+                WHERE challan_id = :challan_id AND org_id = :org_id
+            """),
+            {"challan_id": challan_id, "org_id": self.org_id}
+        ).fetchone()
+        
+        if not result:
+            raise OrderServiceError(
+                f"Challan {challan_id} not found",
+                "CHALLAN_NOT_FOUND"
+            )
+        
+        if result.converted_to_invoice:
+            raise OrderServiceError(
+                f"Challan {result.challan_number} has already been converted to invoice",
+                "CHALLAN_ALREADY_CONVERTED"
+            )
+        
+        return result
+
+    def _mark_challan_as_converted(self, challan_id: int, invoice_id: int):
+        """Mark challan as converted to invoice"""
+        self.db.execute(
+            text("""
+                UPDATE challans
+                SET converted_to_invoice = TRUE,
+                    invoice_id = :invoice_id,
+                    conversion_date = CURRENT_TIMESTAMP
+                WHERE challan_id = :challan_id AND org_id = :org_id
+            """),
+            {
+                "challan_id": challan_id,
+                "invoice_id": invoice_id,
+                "org_id": self.org_id
+            }
+        )
     
     def _validate_and_process_items(self, items: List[OrderItemRequest], customer: CustomerInfo) -> List[OrderItem]:
         """Validate all items with comprehensive product and batch information"""
@@ -921,7 +975,7 @@ class EnterpriseOrderService:
         
         result = self.db.execute(text("""
             INSERT INTO invoices (
-                org_id, invoice_number, order_id, 
+                org_id, invoice_number, order_id, challan_id,
                 invoice_date, due_date,
                 customer_id, customer_name, customer_gstin,
                 
@@ -938,7 +992,7 @@ class EnterpriseOrderService:
                 
                 created_at, updated_at
             ) VALUES (
-                :org_id, :invoice_number, :order_id,
+                :org_id, :invoice_number, :order_id, :challan_id,
                 CURRENT_DATE, :due_date,
                 :customer_id, :customer_name, :customer_gstin,
                 
@@ -959,6 +1013,7 @@ class EnterpriseOrderService:
             "org_id": self.org_id,
             "invoice_number": invoice_number,
             "order_id": order_id,
+            "challan_id": request.challan_id,
             "due_date": request.delivery_date or date.today(),
             "customer_id": customer.customer_id,
             "customer_name": customer.customer_name,

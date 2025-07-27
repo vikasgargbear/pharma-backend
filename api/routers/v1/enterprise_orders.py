@@ -174,7 +174,10 @@ def _transform_quick_sale_request(request_data: dict) -> OrderCreationRequest:
         discount_amount=request_data.get('discount_amount', 0),
         delivery_charges=request_data.get('other_charges', 0),  # Map other_charges to delivery_charges
         notes=request_data.get('notes'),
-        delivery_type="pickup"  # Default for quick-sale
+        delivery_type="pickup",  # Default for quick-sale
+        # Add document references (NEW)
+        order_id=request_data.get('order_id'),
+        challan_id=request_data.get('challan_id')
     )
 
 def _transform_to_legacy_response(enterprise_response: OrderCreationResponse) -> dict:

@@ -497,4 +497,98 @@ async def calculate_invoice_totals(
         
     except Exception as e:
         logger.error(f"Error calculating invoice: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Calculation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to calculate invoice: {str(e)}")
+
+
+@router.post("/{invoice_id}/record-payment")
+async def record_payment(
+    invoice_id: int,
+    payment_data: dict,
+    db: Session = Depends(get_db),
+    org_id: str = DEFAULT_ORG_ID
+):
+    """Record payment for an invoice"""
+    try:
+        # Verify invoice exists and get current payment status
+        invoice = db.execute(
+            text("""
+                SELECT invoice_id, total_amount, payment_status, 
+                       COALESCE(paid_amount, 0) as amount_paid
+                FROM invoices
+                WHERE invoice_id = :invoice_id AND org_id = :org_id
+            """),
+            {"invoice_id": invoice_id, "org_id": org_id}
+        ).fetchone()
+        
+        if not invoice:
+            raise HTTPException(404, "Invoice not found")
+        
+        # Validate payment amount
+        remaining = float(invoice.total_amount) - float(invoice.amount_paid)
+        if payment_data['amount'] > remaining:
+            raise HTTPException(400, f"Payment amount exceeds remaining balance of {remaining}")
+        
+        # Record payment
+        result = db.execute(
+            text("""
+                INSERT INTO invoice_payments (
+                    invoice_id, payment_date, payment_mode, amount,
+                    transaction_id, bank_name, cheque_number, notes,
+                    created_at, created_by
+                ) VALUES (
+                    :invoice_id, :payment_date, :payment_mode, :amount,
+                    :transaction_id, :bank_name, :cheque_number, :notes,
+                    CURRENT_TIMESTAMP, :created_by
+                ) RETURNING payment_id
+            """),
+            {
+                "invoice_id": invoice_id,
+                "payment_date": payment_data.get('payment_date', date.today()),
+                "payment_mode": payment_data['payment_mode'],
+                "amount": payment_data['amount'],
+                "transaction_id": payment_data.get('transaction_id'),
+                "bank_name": payment_data.get('bank_name'),
+                "cheque_number": payment_data.get('cheque_number'),
+                "notes": payment_data.get('notes'),
+                "created_by": payment_data.get('created_by', 1)
+            }
+        )
+        
+        payment_id = result.scalar()
+        
+        # Update invoice payment status
+        new_amount_paid = float(invoice.amount_paid) + payment_data['amount']
+        if new_amount_paid >= float(invoice.total_amount):
+            payment_status = 'paid'
+        else:
+            payment_status = 'partial'
+        
+        db.execute(
+            text("""
+                UPDATE invoices
+                SET paid_amount = :amount_paid,
+                    payment_status = :payment_status,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE invoice_id = :invoice_id
+            """),
+            {
+                "amount_paid": new_amount_paid,
+                "payment_status": payment_status,
+                "invoice_id": invoice_id
+            }
+        )
+        
+        db.commit()
+        
+        return {
+            "payment_id": payment_id,
+            "invoice_id": invoice_id,
+            "amount_paid": new_amount_paid,
+            "payment_status": payment_status,
+            "message": "Payment recorded successfully"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error recording payment: {str(e)}")
+        raise HTTPException(500, f"Failed to record payment: {str(e)}")
