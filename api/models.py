@@ -235,7 +235,6 @@ class Supplier(Base):
     
     # Payment terms
     credit_period_days = Column(Integer, default=30)
-    credit_limit = Column(Numeric(12, 2))
     payment_terms = Column(Text)
     payment_method = Column(String(50))
     

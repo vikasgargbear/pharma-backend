@@ -27,18 +27,14 @@ class SupplierBase(BaseModel):
     city: str = Field(..., min_length=1, max_length=100)
     state: str = Field(..., min_length=1, max_length=100)
     pincode: Optional[str] = Field(None, pattern=r'^\d{6}$')
-    country: str = Field(default="India", max_length=50)
     
     # Regulatory
     gstin: Optional[str] = Field(None, alias="gst_number", pattern=r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$')
     pan_number: Optional[str] = Field(None, pattern=r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$')
     drug_license_no: Optional[str] = Field(None, alias="drug_license_number", max_length=100)
-    fssai_license_no: Optional[str] = Field(None, max_length=100)
     
     # Commercial terms
     payment_terms: int = Field(default=30, alias="credit_period_days", ge=0, le=365)
-    credit_limit: Optional[Decimal] = Field(None, ge=0)
-    discount_percent: Optional[Decimal] = Field(None, ge=0, le=100)
     payment_method: Optional[str] = Field(None, max_length=50)
     
     # Banking
@@ -98,7 +94,6 @@ class SupplierUpdate(BaseModel):
     
     # Commercial terms
     credit_period_days: Optional[int] = Field(None, ge=0, le=365)
-    credit_limit: Optional[Decimal] = Field(None, ge=0)
     payment_method: Optional[str] = Field(None, max_length=50)
     
     # Banking
@@ -142,7 +137,6 @@ class SupplierResponse(BaseModel):
     
     # Commercial terms
     credit_period_days: int
-    credit_limit: Optional[Decimal]
     payment_terms: Optional[str]
     payment_method: Optional[str]
     
