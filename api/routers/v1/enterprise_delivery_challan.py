@@ -193,30 +193,39 @@ class EnterpriseChallanService:
                         {"product_id": item.product_id}
                     ).first()
                     
+                    # Calculate all required values
+                    quantity = item.ordered_quantity
+                    unit_price = item.unit_price
+                    tax_percent = Decimal(str(product.gst_percent if product else 0))
+                    line_subtotal = quantity * unit_price
+                    tax_amount = (line_subtotal * tax_percent) / 100
+                    total_price = line_subtotal + tax_amount
+                    
                     self.db.execute(
                         text("""
                             INSERT INTO order_items (
                                 order_item_id, order_id, product_id,
                                 quantity, unit_price, selling_price,
                                 discount_percent, tax_percent, tax_amount,
-                                line_total, created_at, updated_at
+                                line_total, total_price, created_at, updated_at
                             ) VALUES (
                                 :order_item_id, :order_id, :product_id,
                                 :quantity, :unit_price, :selling_price,
                                 0, :tax_percent, :tax_amount,
-                                :line_total, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                                :line_total, :total_price, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                             )
                         """),
                         {
                             "order_item_id": item.order_item_id,
                             "order_id": request.order_id,
                             "product_id": item.product_id,
-                            "quantity": item.ordered_quantity,
-                            "unit_price": item.unit_price,
-                            "selling_price": item.unit_price,  # Use unit_price as selling_price
-                            "tax_percent": product.gst_percent if product else 0,
-                            "tax_amount": (item.ordered_quantity * item.unit_price * (product.gst_percent if product else 0)) / 100,
-                            "line_total": item.ordered_quantity * item.unit_price
+                            "quantity": quantity,
+                            "unit_price": unit_price,
+                            "selling_price": unit_price,  # Use unit_price as selling_price
+                            "tax_percent": tax_percent,
+                            "tax_amount": tax_amount,
+                            "line_total": line_subtotal,
+                            "total_price": total_price  # line_total + tax
                         }
                     )
                 
