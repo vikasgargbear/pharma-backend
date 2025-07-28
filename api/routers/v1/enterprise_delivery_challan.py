@@ -187,16 +187,24 @@ class EnterpriseChallanService:
                 
                 if not existing_item:
                     # Create the order item first
+                    # Get product details for missing fields
+                    product = self.db.execute(
+                        text("SELECT mrp, gst_percent FROM products WHERE product_id = :product_id"),
+                        {"product_id": item.product_id}
+                    ).first()
+                    
                     self.db.execute(
                         text("""
                             INSERT INTO order_items (
                                 order_item_id, order_id, product_id,
-                                quantity, unit_price, discount_percent,
-                                tax_percent, tax_amount, line_total
+                                quantity, unit_price, selling_price,
+                                discount_percent, tax_percent, tax_amount,
+                                line_total, created_at, updated_at
                             ) VALUES (
                                 :order_item_id, :order_id, :product_id,
-                                :quantity, :unit_price, 0,
-                                0, 0, :line_total
+                                :quantity, :unit_price, :selling_price,
+                                0, :tax_percent, :tax_amount,
+                                :line_total, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                             )
                         """),
                         {
@@ -205,6 +213,9 @@ class EnterpriseChallanService:
                             "product_id": item.product_id,
                             "quantity": item.ordered_quantity,
                             "unit_price": item.unit_price,
+                            "selling_price": item.unit_price,  # Use unit_price as selling_price
+                            "tax_percent": product.gst_percent if product else 0,
+                            "tax_amount": (item.ordered_quantity * item.unit_price * (product.gst_percent if product else 0)) / 100,
                             "line_total": item.ordered_quantity * item.unit_price
                         }
                     )
