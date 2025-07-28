@@ -32,9 +32,9 @@ async def get_sale_returns(
     try:
         query = """
             SELECT sr.*, p.party_name, i.invoice_number as original_invoice_number
-            FROM sales_returns sr
+            FROM sale_returns sr
             LEFT JOIN parties p ON sr.party_id = p.party_id
-            LEFT JOIN invoices i ON sr.original_invoice_id = i.invoice_id
+            LEFT JOIN invoices i ON sr.original_sale_id = i.invoice_id
             WHERE 1=1
         """
         params = {"skip": skip, "limit": limit}
@@ -246,7 +246,6 @@ async def create_sale_return(
             
         # Generate return number
         return_number = f"SR-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        return_id = str(uuid.uuid4())
         
         # Get customer details to check for GST
         customer = db.execute(
@@ -281,22 +280,22 @@ async def create_sale_return(
             total_amount += item_total + item_tax
             
         # Create return record
-        db.execute(
+        result = db.execute(
             text("""
-                INSERT INTO sale_returns (
-                    return_id, org_id, return_number, return_date,
+                INSERT INTO sales_returns (
+                    org_id, return_number, return_date,
                     original_sale_id, party_id, reason,
                     subtotal_amount, tax_amount, total_amount,
                     payment_mode, return_status, credit_note_no
                 ) VALUES (
-                    :return_id, :org_id, :return_number, :return_date,
+                    :org_id, :return_number, :return_date,
                     :original_sale_id, :party_id, :reason,
                     :subtotal, :tax_amount, :total_amount,
                     :payment_mode, 'completed', :credit_note_no
                 )
+                RETURNING return_id
             """),
             {
-                "return_id": return_id,
                 "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",  # Default org
                 "return_number": return_number,
                 "return_date": return_data["return_date"],
@@ -309,7 +308,9 @@ async def create_sale_return(
                 "payment_mode": return_data.get("payment_mode", "credit"),
                 "credit_note_no": credit_note_no
             }
-        )
+        ).fetchone()
+        
+        return_id = result.return_id
         
         # Create return items and update inventory
         for item in return_data["items"]:
@@ -317,17 +318,16 @@ async def create_sale_return(
             db.execute(
                 text("""
                     INSERT INTO sale_return_items (
-                        return_item_id, return_id, product_id,
+                        return_id, product_id,
                         original_sale_item_id, quantity, rate,
                         tax_percent, tax_amount, total_amount
                     ) VALUES (
-                        :item_id, :return_id, :product_id,
+                        :return_id, :product_id,
                         :original_item_id, :quantity, :rate,
                         :tax_percent, :tax_amount, :total
                     )
                 """),
                 {
-                    "item_id": str(uuid.uuid4()),
                     "return_id": return_id,
                     "product_id": item["product_id"],
                     "original_item_id": item.get("original_sale_item_id"),
