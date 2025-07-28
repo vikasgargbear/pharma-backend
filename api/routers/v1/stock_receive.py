@@ -238,20 +238,20 @@ async def get_current_stock(
     org_id = DEFAULT_ORG_ID
     
     try:
-        # Build query for stock data - check if columns exist first
+        # Build query for stock data with unit conversion columns
         query = """
             SELECT 
                 p.product_id as id,
                 p.product_code as code,
                 p.product_name as name,
                 p.category,
-                '' as pack_type,
-                '' as pack_size,
-                1 as pack_unit_quantity,
-                1 as sub_unit_quantity,
+                COALESCE(p.pack_type, '') as pack_type,
+                COALESCE(p.pack_size, '') as pack_size,
+                COALESCE(p.pack_unit_quantity, 1) as pack_unit_quantity,
+                COALESCE(p.sub_unit_quantity, 1) as sub_unit_quantity,
                 'Units' as unit,
-                'Box' as purchase_unit,
-                'Strip' as sale_unit,
+                COALESCE(p.purchase_unit, 'Box') as purchase_unit,
+                COALESCE(p.sale_unit, 'Strip') as sale_unit,
                 p.mrp,
                 p.sale_price as price,
                 p.minimum_stock_level as reorder_level,
@@ -276,7 +276,7 @@ async def get_current_stock(
             query += " AND p.category = :category"
             params["category"] = category
             
-        query += " GROUP BY p.product_id, p.product_code, p.product_name, p.category, p.mrp, p.sale_price, p.minimum_stock_level"
+        query += " GROUP BY p.product_id, p.product_code, p.product_name, p.category, p.pack_type, p.pack_size, p.pack_unit_quantity, p.sub_unit_quantity, p.purchase_unit, p.sale_unit, p.mrp, p.sale_price, p.minimum_stock_level"
         
         if low_stock_only:
             query = f"SELECT * FROM ({query}) AS stock_data WHERE current_stock <= reorder_level"
@@ -399,7 +399,7 @@ async def update_product_properties(
             UPDATE products 
             SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP
             WHERE product_id = :product_id AND org_id = :org_id
-            RETURNING product_id, product_name, category, pack_type, pack_size, minimum_stock_level
+            RETURNING product_id, product_name, category, pack_type, pack_size, pack_unit_quantity, sub_unit_quantity, purchase_unit, sale_unit, minimum_stock_level
         """
         
         result = db.execute(text(query), params)
