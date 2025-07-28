@@ -43,13 +43,13 @@ def create_purchase_with_items(purchase_data: dict, db: Session = Depends(get_db
                     supplier_id, supplier_name, supplier_invoice_number, supplier_invoice_date,
                     subtotal_amount, discount_amount, tax_amount, 
                     other_charges, final_amount, purchase_status,
-                    payment_status, notes, created_by
+                    payment_status, payment_mode, notes, created_by
                 ) VALUES (
                     '12de5e22-eee7-4d25-b3a7-d16d01c6170f', -- Default org
                     :purchase_number, :purchase_date,
                     :supplier_id, :supplier_name, :invoice_number, :invoice_date,
                     :subtotal, :discount, :tax, :other_charges, :total,
-                    :status, :payment_status, :notes, :created_by
+                    :status, :payment_status, :payment_mode, :notes, :created_by
                 ) RETURNING purchase_id
             """),
             {
@@ -66,6 +66,7 @@ def create_purchase_with_items(purchase_data: dict, db: Session = Depends(get_db
                 "total": Decimal(str(purchase_data.get("final_amount", 0))),
                 "status": purchase_data.get("purchase_status", "draft"),
                 "payment_status": purchase_data.get("payment_status", "pending"),
+                "payment_mode": purchase_data.get("payment_mode", "cash"),
                 "notes": purchase_data.get("notes"),
                 "created_by": purchase_data.get("created_by")
             }
