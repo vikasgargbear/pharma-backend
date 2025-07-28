@@ -31,10 +31,10 @@ async def get_sale_returns(
     """
     try:
         query = """
-            SELECT sr.*, p.party_name, s.invoice_number as original_invoice_number
-            FROM sale_returns sr
+            SELECT sr.*, p.party_name, i.invoice_number as original_invoice_number
+            FROM sales_returns sr
             LEFT JOIN parties p ON sr.party_id = p.party_id
-            LEFT JOIN sales s ON sr.original_sale_id = s.sale_id
+            LEFT JOIN invoices i ON sr.original_invoice_id = i.invoice_id
             WHERE 1=1
         """
         params = {"skip": skip, "limit": limit}
@@ -72,7 +72,7 @@ async def get_sale_returns(
             
         # Get total count
         count_query = """
-            SELECT COUNT(*) FROM sale_returns sr WHERE 1=1
+            SELECT COUNT(*) FROM sales_returns sr WHERE 1=1
         """
         if party_id:
             count_query += " AND sr.party_id = :party_id"
@@ -104,32 +104,32 @@ async def get_returnable_invoices(
     try:
         query = """
             SELECT 
-                s.sale_id,
-                s.invoice_number,
-                s.sale_date,
-                s.party_id,
+                i.invoice_id,
+                i.invoice_number,
+                i.invoice_date,
+                i.customer_id as party_id,
                 p.party_name,
-                s.grand_total,
-                COUNT(si.sale_item_id) as total_items
-            FROM sales s
-            LEFT JOIN parties p ON s.party_id = p.party_id
-            LEFT JOIN sale_items si ON s.sale_id = si.sale_id
-            WHERE s.sale_status = 'completed'
+                i.total_amount as grand_total,
+                COUNT(ii.item_id) as total_items
+            FROM invoices i
+            LEFT JOIN parties p ON i.customer_id = p.party_id
+            LEFT JOIN invoice_items ii ON i.invoice_id = ii.invoice_id
+            WHERE i.invoice_status = 'generated'
         """
         params = {}
         
         if party_id:
-            query += " AND s.party_id = :party_id"
+            query += " AND i.customer_id = :party_id"
             params["party_id"] = party_id
             
         if invoice_number:
-            query += " AND s.invoice_number LIKE :invoice_number"
+            query += " AND i.invoice_number LIKE :invoice_number"
             params["invoice_number"] = f"%{invoice_number}%"
             
         query += """ 
-            GROUP BY s.sale_id, s.invoice_number, s.sale_date, 
-                     s.party_id, p.party_name, s.grand_total
-            ORDER BY s.sale_date DESC
+            GROUP BY i.invoice_id, i.invoice_number, i.invoice_date, 
+                     i.customer_id, p.party_name, i.total_amount
+            ORDER BY i.invoice_date DESC
             LIMIT 50
         """
         
@@ -142,11 +142,11 @@ async def get_returnable_invoices(
                 SELECT COALESCE(SUM(sri.quantity), 0) as total_returned
                 FROM sale_returns sr
                 JOIN sale_return_items sri ON sr.return_id = sri.return_id
-                WHERE sr.original_sale_id = :sale_id
+                WHERE sr.original_invoice_id = :invoice_id
             """
             total_returned = db.execute(
                 text(returned_query), 
-                {"sale_id": inv.sale_id}
+                {"invoice_id": inv.invoice_id}
             ).scalar()
             
             invoice_dict = dict(inv._mapping)
@@ -160,22 +160,22 @@ async def get_returnable_invoices(
         logger.error(f"Error fetching returnable invoices: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/invoice/{sale_id}/items")
+@router.get("/invoice/{invoice_id}/items")
 async def get_invoice_items_for_return(
-    sale_id: str,
+    invoice_id: str,
     db: Session = Depends(get_db)
 ):
     """
     Get items from a specific invoice for return
     """
     try:
-        # Get sale details
-        sale = db.execute(
-            text("SELECT * FROM sales WHERE sale_id = :sale_id"),
-            {"sale_id": sale_id}
+        # Get invoice details
+        invoice = db.execute(
+            text("SELECT * FROM invoices WHERE invoice_id = :invoice_id"),
+            {"invoice_id": invoice_id}
         ).first()
         
-        if not sale:
+        if not invoice:
             raise HTTPException(status_code=404, detail="Invoice not found")
             
         # Get items with return info
@@ -185,16 +185,16 @@ async def get_invoice_items_for_return(
                 p.product_name,
                 p.hsn_code,
                 COALESCE(SUM(sri.quantity), 0) as returned_quantity
-            FROM sale_items si
-            LEFT JOIN products p ON si.product_id = p.product_id
+            FROM invoice_items ii
+            LEFT JOIN products p ON ii.product_id = p.product_id
             LEFT JOIN sale_return_items sri ON (
-                sri.original_sale_item_id = si.sale_item_id
+                sri.original_invoice_item_id = ii.item_id
             )
-            WHERE si.sale_id = :sale_id
-            GROUP BY si.sale_item_id, p.product_name, p.hsn_code
+            WHERE ii.invoice_id = :invoice_id
+            GROUP BY ii.item_id, p.product_name, p.hsn_code
         """
         
-        items = db.execute(text(items_query), {"sale_id": sale_id}).fetchall()
+        items = db.execute(text(items_query), {"invoice_id": invoice_id}).fetchall()
         
         result_items = []
         for item in items:
