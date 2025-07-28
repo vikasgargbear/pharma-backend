@@ -14,6 +14,10 @@ from pydantic import BaseModel, Field
 
 from ...database import get_db
 from ...dependencies import get_current_org
+from ...config import settings
+
+# Default org ID for now
+DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
 
 router = APIRouter(
     prefix="/api/v1/stock",
@@ -226,14 +230,13 @@ async def get_current_stock(
     low_stock_only: bool = False,
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db),
-    current_org = Depends(get_current_org)
+    db: Session = Depends(get_db)
 ):
     """
     Get current stock levels for all products
     This endpoint provides comprehensive stock information
     """
-    org_id = current_org["org_id"]
+    org_id = DEFAULT_ORG_ID
     
     try:
         # Build query for stock data
