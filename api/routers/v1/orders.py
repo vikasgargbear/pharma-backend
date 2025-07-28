@@ -52,20 +52,11 @@ async def create_order(
         if not credit_check["valid"] and credit_check.get("message") == "Customer not found":
             raise HTTPException(status_code=404, detail="Customer not found")
         
-        # Validate inventory for all items
+        # REMOVED: Orders should NOT validate inventory
+        # Only invoices should validate and deduct inventory
+        # This allows creating orders/challans even when stock is low
+        # Enterprise systems allow orders to be placed regardless of current stock
         items_dict = [item.dict() for item in order.items]
-        inventory_check = OrderService.validate_inventory(db, items_dict, org_id)
-        
-        if not inventory_check["valid"]:
-            failed_items = [
-                f"{item['product_id']}: {item['message']}" 
-                for item in inventory_check["items"] 
-                if not item["valid"]
-            ]
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Inventory validation failed: {'; '.join(failed_items)}"
-            )
         
         # Get customer details
         customer = db.execute(text("""
