@@ -89,7 +89,7 @@ async def get_invoices(
                     ii.batch_id,
                     ii.quantity,
                     ii.unit_price as rate,
-                    ii.tax_percent,
+                    ii.gst_percent as tax_percent,
                     ii.discount_percent,
                     ii.line_total,
                     b.batch_number,
