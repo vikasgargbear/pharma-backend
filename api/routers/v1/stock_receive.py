@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field
 
 from ...database import get_db
 from ...dependencies import get_current_org
-from ...config import settings
 
 # Default org ID for now
 DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
