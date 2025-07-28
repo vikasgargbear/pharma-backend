@@ -3,7 +3,7 @@ Invoice endpoints for detailed invoice data retrieval
 Optimized for frontend PDF generation
 """
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
@@ -17,6 +17,122 @@ from ...services.invoice_service import InvoiceService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/invoices", tags=["invoices"])
+
+@router.get("/")
+async def get_invoices(
+    customer_id: Optional[int] = None,
+    invoice_status: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    limit: int = Query(50, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """
+    Get invoices with optional filters
+    """
+    try:
+        query = """
+            SELECT 
+                i.invoice_id,
+                i.invoice_number,
+                i.invoice_date,
+                i.customer_id,
+                i.customer_name,
+                i.total_amount,
+                i.payment_status,
+                i.invoice_status,
+                o.order_id,
+                o.order_number
+            FROM invoices i
+            LEFT JOIN orders o ON i.order_id = o.order_id
+            WHERE i.org_id = :org_id
+        """
+        
+        params = {"org_id": DEFAULT_ORG_ID, "limit": limit, "offset": offset}
+        
+        if customer_id:
+            query += " AND i.customer_id = :customer_id"
+            params["customer_id"] = customer_id
+            
+        if invoice_status:
+            query += " AND i.invoice_status = :invoice_status"
+            params["invoice_status"] = invoice_status
+            
+        if payment_status:
+            query += " AND i.payment_status = :payment_status"
+            params["payment_status"] = payment_status
+            
+        if date_from:
+            query += " AND i.invoice_date >= :date_from"
+            params["date_from"] = date_from
+            
+        if date_to:
+            query += " AND i.invoice_date <= :date_to"
+            params["date_to"] = date_to
+            
+        query += " ORDER BY i.invoice_date DESC, i.created_at DESC LIMIT :limit OFFSET :offset"
+        
+        result = db.execute(text(query), params)
+        invoices = []
+        
+        for row in result:
+            invoice_dict = dict(row._mapping)
+            
+            # Get invoice items
+            items_query = """
+                SELECT 
+                    ii.item_id,
+                    ii.product_id,
+                    ii.product_name,
+                    ii.batch_id,
+                    ii.quantity,
+                    ii.unit_price as rate,
+                    ii.tax_percent,
+                    ii.discount_percent,
+                    ii.line_total,
+                    b.batch_number,
+                    b.expiry_date
+                FROM invoice_items ii
+                LEFT JOIN batches b ON ii.batch_id = b.batch_id
+                WHERE ii.invoice_id = :invoice_id
+            """
+            
+            items_result = db.execute(text(items_query), {"invoice_id": invoice_dict["invoice_id"]})
+            invoice_dict["items"] = [dict(item._mapping) for item in items_result]
+            
+            invoices.append(invoice_dict)
+            
+        # Get total count
+        count_query = """
+            SELECT COUNT(*) FROM invoices i
+            WHERE i.org_id = :org_id
+        """
+        
+        if customer_id:
+            count_query += " AND i.customer_id = :customer_id"
+        if invoice_status:
+            count_query += " AND i.invoice_status = :invoice_status"
+        if payment_status:
+            count_query += " AND i.payment_status = :payment_status"
+        if date_from:
+            count_query += " AND i.invoice_date >= :date_from"
+        if date_to:
+            count_query += " AND i.invoice_date <= :date_to"
+            
+        total = db.execute(text(count_query), params).scalar()
+        
+        return {
+            "invoices": invoices,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching invoices: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch invoices: {str(e)}")
 
 # Default organization ID (should come from auth in production)
 DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
