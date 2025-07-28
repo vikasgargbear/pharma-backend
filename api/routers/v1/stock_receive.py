@@ -247,7 +247,11 @@ async def get_current_stock(
                 p.category,
                 p.pack_type,
                 p.pack_size,
+                p.pack_unit_quantity,
+                p.sub_unit_quantity,
                 'Units' as unit,
+                p.purchase_unit,
+                p.sale_unit,
                 p.mrp,
                 p.sale_price as price,
                 p.minimum_stock_level as reorder_level,
@@ -272,7 +276,7 @@ async def get_current_stock(
             query += " AND p.category = :category"
             params["category"] = category
             
-        query += " GROUP BY p.product_id, p.product_code, p.product_name, p.category, p.pack_type, p.pack_size, p.mrp, p.sale_price, p.minimum_stock_level"
+        query += " GROUP BY p.product_id, p.product_code, p.product_name, p.category, p.pack_type, p.pack_size, p.pack_unit_quantity, p.sub_unit_quantity, p.purchase_unit, p.sale_unit, p.mrp, p.sale_price, p.minimum_stock_level"
         
         if low_stock_only:
             query = f"SELECT * FROM ({query}) AS stock_data WHERE current_stock <= reorder_level"
@@ -340,6 +344,10 @@ async def update_product_properties(
     pack_type: Optional[str] = None,
     pack_size: Optional[str] = None,
     minimum_stock_level: Optional[int] = None,
+    pack_unit_quantity: Optional[int] = None,
+    sub_unit_quantity: Optional[int] = None,
+    purchase_unit: Optional[str] = None,
+    sale_unit: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -367,6 +375,22 @@ async def update_product_properties(
         if minimum_stock_level is not None:
             update_fields.append("minimum_stock_level = :minimum_stock_level")
             params["minimum_stock_level"] = minimum_stock_level
+            
+        if pack_unit_quantity is not None:
+            update_fields.append("pack_unit_quantity = :pack_unit_quantity")
+            params["pack_unit_quantity"] = pack_unit_quantity
+            
+        if sub_unit_quantity is not None:
+            update_fields.append("sub_unit_quantity = :sub_unit_quantity")
+            params["sub_unit_quantity"] = sub_unit_quantity
+            
+        if purchase_unit is not None:
+            update_fields.append("purchase_unit = :purchase_unit")
+            params["purchase_unit"] = purchase_unit
+            
+        if sale_unit is not None:
+            update_fields.append("sale_unit = :sale_unit")
+            params["sale_unit"] = sale_unit
             
         if not update_fields:
             raise HTTPException(status_code=400, detail="No fields to update")
