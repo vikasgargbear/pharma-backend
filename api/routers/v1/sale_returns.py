@@ -273,11 +273,8 @@ async def create_sale_return(
         
         for item in return_data["items"]:
             item_total = Decimal(str(item["quantity"])) * Decimal(str(item["rate"]))
-            # Only calculate tax if customer has GST
-            if customer.gst_number:
-                item_tax = item_total * Decimal(str(item.get("tax_percent", 0))) / 100
-            else:
-                item_tax = Decimal("0")
+            # Always calculate tax (all customers paid it)
+            item_tax = item_total * Decimal(str(item.get("tax_percent", 0))) / 100
             
             subtotal += item_total
             tax_amount += item_tax
