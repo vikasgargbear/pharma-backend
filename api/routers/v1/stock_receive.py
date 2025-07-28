@@ -245,7 +245,7 @@ async def get_current_stock(
                 p.product_code as code,
                 p.product_name as name,
                 p.category,
-                p.unit,
+                'Units' as unit,
                 p.mrp,
                 p.sale_price as price,
                 p.minimum_stock_level as reorder_level,
@@ -269,7 +269,7 @@ async def get_current_stock(
             query += " AND p.category = :category"
             params["category"] = category
             
-        query += " GROUP BY p.product_id, p.product_code, p.product_name, p.category, p.unit, p.mrp, p.sale_price, p.minimum_stock_level"
+        query += " GROUP BY p.product_id, p.product_code, p.product_name, p.category, p.mrp, p.sale_price, p.minimum_stock_level"
         
         if low_stock_only:
             query = f"SELECT * FROM ({query}) AS stock_data WHERE current_stock <= reorder_level"
