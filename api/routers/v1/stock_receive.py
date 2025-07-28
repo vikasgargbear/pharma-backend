@@ -245,6 +245,8 @@ async def get_current_stock(
                 p.product_code as code,
                 p.product_name as name,
                 p.category,
+                p.pack_type,
+                p.pack_size,
                 'Units' as unit,
                 p.mrp,
                 p.sale_price as price,
@@ -254,7 +256,8 @@ async def get_current_stock(
                 COALESCE(SUM(b.quantity_available), 0) as stock_quantity,
                 COALESCE(SUM(b.quantity_available), 0) as available_stock,
                 COALESCE(SUM(b.quantity_sold), 0) as reserved_stock,
-                COALESCE(SUM(b.quantity_available * b.cost_price), 0) as stock_value
+                COALESCE(SUM(b.quantity_available * b.cost_price), 0) as cost_value,
+                COALESCE(SUM(b.quantity_available * COALESCE(b.selling_price, p.sale_price)), 0) as stock_value
             FROM products p
             LEFT JOIN batches b ON p.product_id = b.product_id 
                 AND b.org_id = :org_id 
@@ -269,7 +272,7 @@ async def get_current_stock(
             query += " AND p.category = :category"
             params["category"] = category
             
-        query += " GROUP BY p.product_id, p.product_code, p.product_name, p.category, p.mrp, p.sale_price, p.minimum_stock_level"
+        query += " GROUP BY p.product_id, p.product_code, p.product_name, p.category, p.pack_type, p.pack_size, p.mrp, p.sale_price, p.minimum_stock_level"
         
         if low_stock_only:
             query = f"SELECT * FROM ({query}) AS stock_data WHERE current_stock <= reorder_level"
@@ -328,4 +331,68 @@ async def get_current_stock(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get current stock: {str(e)}"
+        )
+
+@router.patch("/products/{product_id}")
+async def update_product_properties(
+    product_id: int,
+    category: Optional[str] = None,
+    pack_type: Optional[str] = None,
+    pack_size: Optional[str] = None,
+    minimum_stock_level: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Update product properties for stock management
+    """
+    org_id = DEFAULT_ORG_ID
+    
+    try:
+        # Build update query dynamically
+        update_fields = []
+        params = {"product_id": product_id, "org_id": org_id}
+        
+        if category is not None:
+            update_fields.append("category = :category")
+            params["category"] = category
+            
+        if pack_type is not None:
+            update_fields.append("pack_type = :pack_type")
+            params["pack_type"] = pack_type
+            
+        if pack_size is not None:
+            update_fields.append("pack_size = :pack_size")
+            params["pack_size"] = pack_size
+            
+        if minimum_stock_level is not None:
+            update_fields.append("minimum_stock_level = :minimum_stock_level")
+            params["minimum_stock_level"] = minimum_stock_level
+            
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+            
+        query = f"""
+            UPDATE products 
+            SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP
+            WHERE product_id = :product_id AND org_id = :org_id
+            RETURNING product_id, product_name, category, pack_type, pack_size, minimum_stock_level
+        """
+        
+        result = db.execute(text(query), params)
+        updated_product = result.first()
+        
+        if not updated_product:
+            raise HTTPException(status_code=404, detail="Product not found")
+            
+        db.commit()
+        
+        return dict(updated_product._mapping)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update product: {str(e)}"
         )
