@@ -225,7 +225,7 @@ async def create_purchase_return(
     db: Session = Depends(get_db)
 ):
     """
-    Create a new purchase return (debit note)
+    Create a new purchase return and generate debit note if supplier has GST
     """
     try:
         # Validate required fields
@@ -243,9 +243,27 @@ async def create_purchase_return(
                 detail="At least one item must be returned"
             )
             
-        # Generate return/debit note number
+        # Get supplier details to check for GST
+        supplier = db.execute(
+            text("""
+                SELECT supplier_id, supplier_name, gst_number
+                FROM suppliers
+                WHERE supplier_id = :supplier_id
+            """),
+            {"supplier_id": return_data["supplier_id"]}
+        ).fetchone()
+        
+        if not supplier:
+            raise HTTPException(status_code=404, detail="Supplier not found")
+            
+        # Generate return number
         return_number = f"PR-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        debit_note_number = return_data.get("debit_note_number", f"DN-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        
+        # Generate debit note number only if supplier has GST
+        debit_note_number = None
+        if supplier.gst_number:
+            debit_note_number = f"DN-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        
         return_id = str(uuid.uuid4())
         
         # Calculate totals
@@ -284,7 +302,7 @@ async def create_purchase_return(
                 "return_date": return_data["return_date"],
                 "original_purchase_id": return_data["original_purchase_id"],
                 "supplier_id": return_data["supplier_id"],
-                "reason": return_data.get("reason", ""),
+                "reason": return_data.get("return_reason", return_data.get("reason", "")),
                 "subtotal": subtotal,
                 "tax_amount": tax_amount,
                 "total_amount": total_amount
@@ -368,7 +386,9 @@ async def create_purchase_return(
             "return_id": return_id,
             "return_number": return_number,
             "debit_note_number": debit_note_number,
-            "message": f"Purchase return {return_number} created successfully"
+            "total_amount": float(total_amount),
+            "has_gst": bool(supplier.gst_number),
+            "message": f"Purchase return {return_number} created successfully" + (f" with debit note {debit_note_number}" if debit_note_number else " (No debit note - supplier does not have GST)")
         }
         
     except HTTPException:

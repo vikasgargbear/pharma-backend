@@ -60,6 +60,7 @@ from .routers.v1.challan_to_invoice import router as challan_to_invoice_router
 from .routers.v1.organization_settings import router as organization_settings_router
 from .routers.v1.auth import router as auth_router
 from .routers.v1.sales_orders import router as sales_orders_router
+from .routers.v1.stock_writeoff import router as stock_writeoff_router
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -238,6 +239,7 @@ app.include_router(challan_to_invoice_router)  # 🚀 NEW: Create invoices from 
 app.include_router(organization_settings_router)  # 🚀 NEW: Organization settings and profile management
 app.include_router(auth_router)  # 🚀 NEW: JWT-based authentication with org context
 app.include_router(sales_orders_router)  # 🚀 NEW: Enterprise sales order management
+app.include_router(stock_writeoff_router)  # 🚀 NEW: Stock write-off with ITC reversal
 
 # Debug router (only in debug mode)
 if settings.DEBUG:

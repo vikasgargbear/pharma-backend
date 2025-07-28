@@ -220,17 +220,23 @@ async def create_sale_return(
     db: Session = Depends(get_db)
 ):
     """
-    Create a new sale return
+    Create a new sale return and generate credit note if customer has GST
     """
     try:
         # Validate required fields
-        required_fields = ["original_sale_id", "party_id", "return_date", "items"]
+        required_fields = ["invoice_id", "customer_id", "return_date", "items"]
         for field in required_fields:
             if field not in return_data:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Missing required field: {field}"
-                )
+                # Handle both old and new field names
+                if field == "invoice_id" and "original_sale_id" in return_data:
+                    return_data["invoice_id"] = return_data["original_sale_id"]
+                elif field == "customer_id" and "party_id" in return_data:
+                    return_data["customer_id"] = return_data["party_id"]
+                else:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Missing required field: {field}"
+                    )
                 
         if not return_data["items"]:
             raise HTTPException(
@@ -242,6 +248,24 @@ async def create_sale_return(
         return_number = f"SR-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         return_id = str(uuid.uuid4())
         
+        # Get customer details to check for GST
+        customer = db.execute(
+            text("""
+                SELECT customer_id, customer_name, gst_number
+                FROM customers
+                WHERE customer_id = :customer_id
+            """),
+            {"customer_id": return_data["customer_id"]}
+        ).fetchone()
+        
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+            
+        # Generate credit note number if customer has GST
+        credit_note_no = None
+        if customer.gst_number:
+            credit_note_no = f"CN-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        
         # Calculate totals
         subtotal = Decimal("0")
         tax_amount = Decimal("0")
@@ -249,7 +273,11 @@ async def create_sale_return(
         
         for item in return_data["items"]:
             item_total = Decimal(str(item["quantity"])) * Decimal(str(item["rate"]))
-            item_tax = item_total * Decimal(str(item.get("tax_percent", 0))) / 100
+            # Only calculate tax if customer has GST
+            if customer.gst_number:
+                item_tax = item_total * Decimal(str(item.get("tax_percent", 0))) / 100
+            else:
+                item_tax = Decimal("0")
             
             subtotal += item_total
             tax_amount += item_tax
@@ -262,12 +290,12 @@ async def create_sale_return(
                     return_id, org_id, return_number, return_date,
                     original_sale_id, party_id, reason,
                     subtotal_amount, tax_amount, total_amount,
-                    payment_mode, return_status
+                    payment_mode, return_status, credit_note_no
                 ) VALUES (
                     :return_id, :org_id, :return_number, :return_date,
                     :original_sale_id, :party_id, :reason,
                     :subtotal, :tax_amount, :total_amount,
-                    :payment_mode, 'completed'
+                    :payment_mode, 'completed', :credit_note_no
                 )
             """),
             {
@@ -275,13 +303,14 @@ async def create_sale_return(
                 "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",  # Default org
                 "return_number": return_number,
                 "return_date": return_data["return_date"],
-                "original_sale_id": return_data["original_sale_id"],
-                "party_id": return_data["party_id"],
-                "reason": return_data.get("reason", ""),
+                "original_sale_id": return_data.get("invoice_id", return_data.get("original_sale_id")),
+                "party_id": return_data.get("customer_id", return_data.get("party_id")),
+                "reason": return_data.get("return_reason", return_data.get("reason", "")),
                 "subtotal": subtotal,
                 "tax_amount": tax_amount,
                 "total_amount": total_amount,
-                "payment_mode": return_data.get("payment_mode", "credit")
+                "payment_mode": return_data.get("payment_mode", "credit"),
+                "credit_note_no": credit_note_no
             }
         )
         
@@ -381,7 +410,10 @@ async def create_sale_return(
             "status": "success",
             "return_id": return_id,
             "return_number": return_number,
-            "message": f"Sale return {return_number} created successfully"
+            "credit_note_no": credit_note_no,
+            "total_amount": float(total_amount),
+            "has_gst": bool(customer.gst_number),
+            "message": f"Sale return {return_number} created successfully" + (f" with credit note {credit_note_no}" if credit_note_no else "")
         }
         
     except HTTPException:
