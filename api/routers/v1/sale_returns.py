@@ -375,9 +375,75 @@ async def create_sale_return(
                     }
                 )
                 
-        # Update party ledger
-        if return_data.get("payment_mode") == "credit":
-            # Create credit entry in ledger
+        # Update party ledger based on credit adjustment type
+        credit_adjustment_type = return_data.get("credit_adjustment_type", "future")
+        
+        if credit_adjustment_type == "existing_dues":
+            # Check current outstanding balance
+            outstanding = db.execute(
+                text("""
+                    SELECT COALESCE(SUM(debit_amount - credit_amount), 0) as balance
+                    FROM party_ledger
+                    WHERE party_id = :party_id
+                """),
+                {"party_id": return_data.get("customer_id", return_data.get("party_id"))}
+            ).scalar()
+            
+            # Adjust against existing dues
+            adjustment_amount = min(float(total_amount), float(outstanding))
+            
+            if adjustment_amount > 0:
+                # Create adjustment entry
+                db.execute(
+                    text("""
+                        INSERT INTO party_ledger (
+                            ledger_id, org_id, party_id, transaction_date,
+                            transaction_type, reference_type, reference_id,
+                            debit_amount, credit_amount, description
+                        ) VALUES (
+                            :ledger_id, :org_id, :party_id, :date,
+                            'adjustment', 'sale_return', :return_id,
+                            0, :amount, :description
+                        )
+                    """),
+                    {
+                        "ledger_id": str(uuid.uuid4()),
+                        "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
+                        "party_id": return_data.get("customer_id", return_data.get("party_id")),
+                        "date": return_data["return_date"],
+                        "return_id": return_id,
+                        "amount": Decimal(str(adjustment_amount)),
+                        "description": f"Sale Return Adjusted - {return_number}"
+                    }
+                )
+            
+            # If there's remaining amount, create credit entry
+            remaining = float(total_amount) - adjustment_amount
+            if remaining > 0:
+                db.execute(
+                    text("""
+                        INSERT INTO party_ledger (
+                            ledger_id, org_id, party_id, transaction_date,
+                            transaction_type, reference_type, reference_id,
+                            debit_amount, credit_amount, description
+                        ) VALUES (
+                            :ledger_id, :org_id, :party_id, :date,
+                            'credit', 'sale_return', :return_id,
+                            0, :amount, :description
+                        )
+                    """),
+                    {
+                        "ledger_id": str(uuid.uuid4()),
+                        "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
+                        "party_id": return_data.get("customer_id", return_data.get("party_id")),
+                        "date": return_data["return_date"],
+                        "return_id": return_id,
+                        "amount": Decimal(str(remaining)),
+                        "description": f"Sale Return Credit Balance - {return_number}"
+                    }
+                )
+        else:
+            # Keep as credit for future invoices
             db.execute(
                 text("""
                     INSERT INTO party_ledger (
@@ -393,7 +459,7 @@ async def create_sale_return(
                 {
                     "ledger_id": str(uuid.uuid4()),
                     "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                    "party_id": return_data["party_id"],
+                    "party_id": return_data.get("customer_id", return_data.get("party_id")),
                     "date": return_data["return_date"],
                     "return_id": return_id,
                     "amount": total_amount,
