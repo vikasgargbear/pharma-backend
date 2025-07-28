@@ -109,15 +109,16 @@ class EnterpriseChallanService:
     def create_challan(self, request: ChallanCreationRequest) -> Dict[str, Any]:
         """Create new delivery challan"""
         try:
-            # Validate order exists
+            # Validate order exists WITH org_id
             order_result = self.db.execute(
                 text("""
                     SELECT o.*, c.customer_name 
                     FROM orders o
                     JOIN customers c ON o.customer_id = c.customer_id
                     WHERE o.order_id = :order_id
+                    AND o.org_id = :org_id
                 """),
-                {"order_id": request.order_id}
+                {"order_id": request.order_id, "org_id": self.org_id}
             )
             order = order_result.first()
             if not order:
@@ -126,11 +127,11 @@ class EnterpriseChallanService:
             # Generate challan number
             challan_number = self._generate_challan_number()
             
-            # Create challan record
+            # Create challan record WITH org_id
             challan_result = self.db.execute(
                 text("""
                     INSERT INTO challans (
-                        order_id, customer_id, challan_number,
+                        org_id, order_id, customer_id, challan_number,
                         challan_date, dispatch_date, expected_delivery_date,
                         status, vehicle_number, driver_name, driver_phone,
                         transport_company, lr_number, freight_amount,
@@ -139,7 +140,7 @@ class EnterpriseChallanService:
                         delivery_contact_phone, total_packages, total_weight,
                         prepared_by
                     ) VALUES (
-                        :order_id, :customer_id, :challan_number,
+                        :org_id, :order_id, :customer_id, :challan_number,
                         :challan_date, :dispatch_date, :expected_delivery_date,
                         :status, :vehicle_number, :driver_name, :driver_phone,
                         :transport_company, :lr_number, :freight_amount,
@@ -151,6 +152,7 @@ class EnterpriseChallanService:
                     RETURNING challan_id
                 """),
                 {
+                    "org_id": self.org_id,
                     "order_id": request.order_id,
                     "customer_id": request.customer_id,
                     "challan_number": challan_number,
@@ -177,59 +179,34 @@ class EnterpriseChallanService:
             )
             challan_id = challan_result.scalar()
             
-            # First, create order items if they don't exist
+            # Check if this order already has order_items
+            existing_order_items = self.db.execute(
+                text("""
+                    SELECT order_item_id, product_id, quantity
+                    FROM order_items
+                    WHERE order_id = :order_id
+                """),
+                {"order_id": request.order_id}
+            ).fetchall()
+            
+            # Create a map of existing order items by product_id
+            existing_items_map = {item.product_id: item for item in existing_order_items}
+            
+            # Create challan items
             for idx, item in enumerate(request.items):
-                # Check if order_item_id exists
-                existing_item = self.db.execute(
-                    text("SELECT 1 FROM order_items WHERE order_item_id = :order_item_id"),
-                    {"order_item_id": item.order_item_id}
-                ).first()
+                # Check if order_item exists for this product
+                existing_order_item = existing_items_map.get(item.product_id)
                 
-                if not existing_item:
-                    # Create the order item first
-                    # Get product details for missing fields
-                    product = self.db.execute(
-                        text("SELECT mrp, gst_percent FROM products WHERE product_id = :product_id"),
-                        {"product_id": item.product_id}
-                    ).first()
-                    
-                    # Calculate all required values
-                    quantity = item.ordered_quantity
-                    unit_price = item.unit_price
-                    tax_percent = Decimal(str(product.gst_percent if product else 0))
-                    line_subtotal = quantity * unit_price
-                    tax_amount = (line_subtotal * tax_percent) / 100
-                    total_price = line_subtotal + tax_amount
-                    
-                    self.db.execute(
-                        text("""
-                            INSERT INTO order_items (
-                                order_item_id, order_id, product_id,
-                                quantity, unit_price, selling_price,
-                                discount_percent, tax_percent, tax_amount,
-                                line_total, total_price, created_at, updated_at
-                            ) VALUES (
-                                :order_item_id, :order_id, :product_id,
-                                :quantity, :unit_price, :selling_price,
-                                0, :tax_percent, :tax_amount,
-                                :line_total, :total_price, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                            )
-                        """),
-                        {
-                            "order_item_id": item.order_item_id,
-                            "order_id": request.order_id,
-                            "product_id": item.product_id,
-                            "quantity": quantity,
-                            "unit_price": unit_price,
-                            "selling_price": unit_price,  # Use unit_price as selling_price
-                            "tax_percent": tax_percent,
-                            "tax_amount": tax_amount,
-                            "line_total": line_subtotal,
-                            "total_price": total_price  # line_total + tax
-                        }
-                    )
+                if existing_order_item:
+                    # Use existing order_item_id
+                    order_item_id = existing_order_item.order_item_id
+                else:
+                    # For items not in the original order, we need to handle differently
+                    # This shouldn't happen in normal flow
+                    logger.warning(f"Product {item.product_id} not found in order {request.order_id}")
+                    # Skip this item or handle as needed
+                    continue
                 
-                # Now create challan item
                 pending_qty = item.ordered_quantity - item.dispatched_quantity
                 
                 self.db.execute(
@@ -250,7 +227,7 @@ class EnterpriseChallanService:
                     """),
                     {
                         "challan_id": challan_id,
-                        "order_item_id": item.order_item_id,
+                        "order_item_id": order_item_id,  # Use the found order_item_id
                         "product_id": item.product_id,
                         "product_name": item.product_name,
                         "batch_id": item.batch_id,
@@ -345,9 +322,9 @@ async def list_challans(
                 c.total_packages
             FROM challans c
             JOIN customers cust ON c.customer_id = cust.customer_id
-            WHERE 1=1
+            WHERE c.org_id = :org_id
         """
-        params = {}
+        params = {"org_id": org_id}
         
         if customer_id:
             query += " AND c.customer_id = :customer_id"
