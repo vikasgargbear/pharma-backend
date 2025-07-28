@@ -86,12 +86,16 @@ async def get_invoices(
                     ii.item_id,
                     ii.product_id,
                     ii.product_name,
+                    ii.hsn_code,
                     ii.batch_id,
                     ii.quantity,
                     ii.unit_price as rate,
+                    ii.mrp,
                     ii.gst_percent as tax_percent,
                     ii.discount_percent,
-                    ii.line_total,
+                    ii.discount_amount,
+                    ii.taxable_amount,
+                    ii.total_amount as line_total,
                     b.batch_number,
                     b.expiry_date
                 FROM invoice_items ii
