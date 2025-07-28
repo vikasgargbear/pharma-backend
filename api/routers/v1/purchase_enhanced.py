@@ -25,27 +25,38 @@ def create_purchase_with_items(purchase_data: dict, db: Session = Depends(get_db
         # Generate purchase number
         purchase_number = f"PO-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         
+        # Get supplier name first
+        supplier_name = None
+        if purchase_data.get("supplier_id"):
+            supplier_result = db.execute(
+                text("SELECT supplier_name FROM suppliers WHERE supplier_id = :id"),
+                {"id": purchase_data.get("supplier_id")}
+            ).first()
+            if supplier_result:
+                supplier_name = supplier_result.supplier_name
+        
         # Create purchase header
         result = db.execute(
             text("""
                 INSERT INTO purchases (
                     org_id, purchase_number, purchase_date,
-                    supplier_id, supplier_invoice_number, supplier_invoice_date,
+                    supplier_id, supplier_name, supplier_invoice_number, supplier_invoice_date,
                     subtotal_amount, discount_amount, tax_amount, 
                     other_charges, final_amount, purchase_status,
-                    payment_status, notes, created_by
+                    payment_status, payment_mode, notes, created_by
                 ) VALUES (
                     '12de5e22-eee7-4d25-b3a7-d16d01c6170f', -- Default org
                     :purchase_number, :purchase_date,
-                    :supplier_id, :invoice_number, :invoice_date,
+                    :supplier_id, :supplier_name, :invoice_number, :invoice_date,
                     :subtotal, :discount, :tax, :other_charges, :total,
-                    :status, :payment_status, :notes, :created_by
+                    :status, :payment_status, :payment_mode, :notes, :created_by
                 ) RETURNING purchase_id
             """),
             {
                 "purchase_number": purchase_number,
                 "purchase_date": purchase_data.get("purchase_date", datetime.now().date()),
                 "supplier_id": purchase_data.get("supplier_id"),
+                "supplier_name": supplier_name,
                 "invoice_number": purchase_data.get("supplier_invoice_number"),
                 "invoice_date": purchase_data.get("supplier_invoice_date"),
                 "subtotal": Decimal(str(purchase_data.get("subtotal_amount", 0))),
@@ -55,6 +66,7 @@ def create_purchase_with_items(purchase_data: dict, db: Session = Depends(get_db
                 "total": Decimal(str(purchase_data.get("final_amount", 0))),
                 "status": purchase_data.get("purchase_status", "draft"),
                 "payment_status": purchase_data.get("payment_status", "pending"),
+                "payment_mode": purchase_data.get("payment_mode", "cash"),
                 "notes": purchase_data.get("notes"),
                 "created_by": purchase_data.get("created_by")
             }
@@ -80,13 +92,19 @@ def create_purchase_with_items(purchase_data: dict, db: Session = Depends(get_db
             tax_amount = taxable_amount * tax_percent / 100
             total_price = taxable_amount + tax_amount
             
+            # Generate batch number if not provided
+            batch_number = item.get("batch_number")
+            if not batch_number or batch_number.strip() == "":
+                # Generate batch number: BATCH + YYMM + Random 4 digits
+                batch_number = f"BATCH{datetime.now().strftime('%y%m')}{str(db.execute(text('SELECT floor(random() * 10000)::int')).scalar()).zfill(4)}"
+            
             db.execute(
                 text("""
                     INSERT INTO purchase_items (
                         purchase_id, product_id, product_name,
                         ordered_quantity, received_quantity, free_quantity,
                         purchase_uom, base_quantity,
-                        cost_price, mrp,
+                        cost_price, selling_price, mrp,
                         discount_percent, discount_amount,
                         tax_percent, tax_amount, total_price,
                         batch_number, manufacturing_date, expiry_date,
@@ -95,7 +113,7 @@ def create_purchase_with_items(purchase_data: dict, db: Session = Depends(get_db
                         :purchase_id, :product_id, :product_name,
                         :ordered_qty, :received_qty, :free_qty,
                         :uom, :base_qty,
-                        :cost_price, :mrp,
+                        :cost_price, :selling_price, :mrp,
                         :disc_percent, :disc_amount,
                         :tax_percent, :tax_amount, :total,
                         :batch_number, :mfg_date, :exp_date,
@@ -112,13 +130,14 @@ def create_purchase_with_items(purchase_data: dict, db: Session = Depends(get_db
                     "uom": item.get("purchase_uom", "NOS"),
                     "base_qty": item.get("base_quantity", quantity),
                     "cost_price": cost_price,
+                    "selling_price": Decimal(str(item.get("selling_price", item.get("mrp", 0)))),
                     "mrp": Decimal(str(item.get("mrp", 0))),
                     "disc_percent": discount_percent,
                     "disc_amount": discount_amount,
                     "tax_percent": tax_percent,
                     "tax_amount": tax_amount,
                     "total": total_price,
-                    "batch_number": item.get("batch_number"),
+                    "batch_number": batch_number,
                     "mfg_date": item.get("manufacturing_date"),
                     "exp_date": item.get("expiry_date"),
                     "status": item.get("item_status", "pending"),

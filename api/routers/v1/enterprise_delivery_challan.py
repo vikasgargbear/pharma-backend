@@ -96,11 +96,9 @@ class EnterpriseChallanService:
             text("""
                 SELECT COUNT(*) + 1 as next_seq
                 FROM challans
-                WHERE org_id = :org_id
-                AND challan_number LIKE :pattern
+                WHERE challan_number LIKE :pattern
             """),
             {
-                "org_id": self.org_id,
                 "pattern": f"DC{date_part}%"
             }
         )
@@ -118,9 +116,8 @@ class EnterpriseChallanService:
                     FROM orders o
                     JOIN customers c ON o.customer_id = c.customer_id
                     WHERE o.order_id = :order_id
-                    AND o.org_id = :org_id
                 """),
-                {"order_id": request.order_id, "org_id": self.org_id}
+                {"order_id": request.order_id}
             )
             order = order_result.first()
             if not order:
@@ -133,7 +130,7 @@ class EnterpriseChallanService:
             challan_result = self.db.execute(
                 text("""
                     INSERT INTO challans (
-                        org_id, order_id, customer_id, challan_number,
+                        order_id, customer_id, challan_number,
                         challan_date, dispatch_date, expected_delivery_date,
                         status, vehicle_number, driver_name, driver_phone,
                         transport_company, lr_number, freight_amount,
@@ -142,7 +139,7 @@ class EnterpriseChallanService:
                         delivery_contact_phone, total_packages, total_weight,
                         prepared_by
                     ) VALUES (
-                        :org_id, :order_id, :customer_id, :challan_number,
+                        :order_id, :customer_id, :challan_number,
                         :challan_date, :dispatch_date, :expected_delivery_date,
                         :status, :vehicle_number, :driver_name, :driver_phone,
                         :transport_company, :lr_number, :freight_amount,
@@ -154,7 +151,6 @@ class EnterpriseChallanService:
                     RETURNING challan_id
                 """),
                 {
-                    "org_id": self.org_id,
                     "order_id": request.order_id,
                     "customer_id": request.customer_id,
                     "challan_number": challan_number,
@@ -181,8 +177,39 @@ class EnterpriseChallanService:
             )
             challan_id = challan_result.scalar()
             
-            # Create challan items
-            for item in request.items:
+            # First, create order items if they don't exist
+            for idx, item in enumerate(request.items):
+                # Check if order_item_id exists
+                existing_item = self.db.execute(
+                    text("SELECT 1 FROM order_items WHERE order_item_id = :order_item_id"),
+                    {"order_item_id": item.order_item_id}
+                ).first()
+                
+                if not existing_item:
+                    # Create the order item first
+                    self.db.execute(
+                        text("""
+                            INSERT INTO order_items (
+                                order_item_id, order_id, product_id,
+                                quantity, unit_price, discount_percent,
+                                tax_percent, tax_amount, line_total
+                            ) VALUES (
+                                :order_item_id, :order_id, :product_id,
+                                :quantity, :unit_price, 0,
+                                0, 0, :line_total
+                            )
+                        """),
+                        {
+                            "order_item_id": item.order_item_id,
+                            "order_id": request.order_id,
+                            "product_id": item.product_id,
+                            "quantity": item.ordered_quantity,
+                            "unit_price": item.unit_price,
+                            "line_total": item.ordered_quantity * item.unit_price
+                        }
+                    )
+                
+                # Now create challan item
                 pending_qty = item.ordered_quantity - item.dispatched_quantity
                 
                 self.db.execute(
@@ -298,9 +325,9 @@ async def list_challans(
                 c.total_packages
             FROM challans c
             JOIN customers cust ON c.customer_id = cust.customer_id
-            WHERE c.org_id = :org_id
+            WHERE 1=1
         """
-        params = {"org_id": org_id}
+        params = {}
         
         if customer_id:
             query += " AND c.customer_id = :customer_id"
@@ -346,9 +373,8 @@ async def get_challan_details(
                 FROM challans c
                 JOIN customers cust ON c.customer_id = cust.customer_id
                 WHERE c.challan_id = :challan_id
-                AND c.org_id = :org_id
             """),
-            {"challan_id": challan_id, "org_id": org_id}
+            {"challan_id": challan_id}
         )
         challan = challan_result.first()
         if not challan:
@@ -626,9 +652,9 @@ async def get_challan_analytics(
                     THEN EXTRACT(EPOCH FROM (delivery_time - dispatch_time))/3600 
                 END) as avg_delivery_hours
             FROM challans
-            WHERE org_id = :org_id
+            WHERE 1=1
         """
-        params = {"org_id": org_id}
+        params = {}
         
         if start_date:
             query += " AND challan_date >= :start_date"
@@ -653,8 +679,7 @@ async def get_challan_analytics(
                         THEN EXTRACT(EPOCH FROM (delivery_time - dispatch_time))/3600 
                     END) as avg_delivery_hours
                 FROM challans
-                WHERE org_id = :org_id
-                AND challan_date >= COALESCE(:start_date, challan_date)
+                WHERE challan_date >= COALESCE(:start_date, challan_date)
                 AND challan_date <= COALESCE(:end_date, challan_date)
                 GROUP BY delivery_city
                 ORDER BY challan_count DESC
