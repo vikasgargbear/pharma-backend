@@ -358,97 +358,9 @@ async def create_sale_return(
                 )
             # Note: If no batch_id, we skip stock update as we can't track non-batch items
                 
-        # Update party ledger based on credit adjustment type
-        credit_adjustment_type = return_data.get("credit_adjustment_type", "future")
-        
-        if credit_adjustment_type == "existing_dues":
-            # Check current outstanding balance
-            outstanding = db.execute(
-                text("""
-                    SELECT COALESCE(SUM(debit_amount - credit_amount), 0) as balance
-                    FROM party_ledger
-                    WHERE party_id = :party_id
-                """),
-                {"party_id": return_data.get("customer_id", return_data.get("party_id"))}
-            ).scalar()
-            
-            # Adjust against existing dues
-            adjustment_amount = min(float(total_amount), float(outstanding))
-            
-            if adjustment_amount > 0:
-                # Create adjustment entry
-                db.execute(
-                    text("""
-                        INSERT INTO party_ledger (
-                            ledger_id, org_id, party_id, transaction_date,
-                            transaction_type, reference_type, reference_id,
-                            debit_amount, credit_amount, description
-                        ) VALUES (
-                            :ledger_id, :org_id, :party_id, :date,
-                            'adjustment', 'sale_return', :return_id,
-                            0, :amount, :description
-                        )
-                    """),
-                    {
-                        "ledger_id": str(uuid.uuid4()),
-                        "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                        "party_id": return_data.get("customer_id", return_data.get("party_id")),
-                        "date": return_data["return_date"],
-                        "return_id": return_id,
-                        "amount": Decimal(str(adjustment_amount)),
-                        "description": f"Sale Return Adjusted - {return_number}"
-                    }
-                )
-            
-            # If there's remaining amount, create credit entry
-            remaining = float(total_amount) - adjustment_amount
-            if remaining > 0:
-                db.execute(
-                    text("""
-                        INSERT INTO party_ledger (
-                            ledger_id, org_id, party_id, transaction_date,
-                            transaction_type, reference_type, reference_id,
-                            debit_amount, credit_amount, description
-                        ) VALUES (
-                            :ledger_id, :org_id, :party_id, :date,
-                            'credit', 'sale_return', :return_id,
-                            0, :amount, :description
-                        )
-                    """),
-                    {
-                        "ledger_id": str(uuid.uuid4()),
-                        "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                        "party_id": return_data.get("customer_id", return_data.get("party_id")),
-                        "date": return_data["return_date"],
-                        "return_id": return_id,
-                        "amount": Decimal(str(remaining)),
-                        "description": f"Sale Return Credit Balance - {return_number}"
-                    }
-                )
-        else:
-            # Keep as credit for future invoices
-            db.execute(
-                text("""
-                    INSERT INTO party_ledger (
-                        ledger_id, org_id, party_id, transaction_date,
-                        transaction_type, reference_type, reference_id,
-                        debit_amount, credit_amount, description
-                    ) VALUES (
-                        :ledger_id, :org_id, :party_id, :date,
-                        'credit', 'sale_return', :return_id,
-                        0, :amount, :description
-                    )
-                """),
-                {
-                    "ledger_id": str(uuid.uuid4()),
-                    "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                    "party_id": return_data.get("customer_id", return_data.get("party_id")),
-                    "date": return_data["return_date"],
-                    "return_id": return_id,
-                    "amount": total_amount,
-                    "description": f"Sale Return - {return_number}"
-                }
-            )
+        # TODO: Update party ledger when table is available
+        # For now, we'll skip ledger updates to avoid errors
+        # The credit adjustment functionality will be added later
             
         db.commit()
         
@@ -569,16 +481,7 @@ async def cancel_sale_return(
                     }
                 )
             
-        # Reverse ledger entry if credit return
-        if sale_return.payment_mode == "credit":
-            db.execute(
-                text("""
-                    DELETE FROM party_ledger 
-                    WHERE reference_type = 'sale_return' 
-                    AND reference_id = :return_id
-                """),
-                {"return_id": return_id}
-            )
+        # TODO: Reverse ledger entry when party_ledger table is available
             
         # Update return status
         db.execute(
