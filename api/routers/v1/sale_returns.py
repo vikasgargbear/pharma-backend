@@ -31,10 +31,14 @@ async def get_sale_returns(
     """
     try:
         query = """
-            SELECT sr.*, c.customer_name as party_name, i.invoice_number as original_invoice_number
+            SELECT sr.*, c.customer_name as party_name, 
+                   -- Extract invoice number from return items remarks
+                   (SELECT SUBSTRING(ri.remarks, 'Invoice: ([^,]+)')
+                    FROM return_items ri 
+                    WHERE ri.return_id = sr.return_id 
+                    LIMIT 1) as original_invoice_number
             FROM return_requests sr
             LEFT JOIN customers c ON sr.customer_id = c.customer_id
-            LEFT JOIN invoices i ON sr.order_id = i.invoice_id
             WHERE sr.return_type = 'SALES'
         """
         params = {"skip": skip, "limit": limit}
@@ -198,7 +202,7 @@ async def get_invoice_items_for_return(
             GROUP BY ii.item_id, p.product_name, p.hsn_code
         """
         
-        items = db.execute(text(items_query), {"invoice_id": invoice_id}).fetchall()
+        items = db.execute(text(items_query), {"invoice_id": invoice_id, "invoice_pattern": f"%Invoice: {invoice_id}%"}).fetchall()
         
         result_items = []
         for item in items:
@@ -284,6 +288,7 @@ async def create_sale_return(
             total_amount += item_total + item_tax
             
         # Create return record using return_requests table
+        # Note: order_id can be NULL for direct invoice returns
         result = db.execute(
             text("""
                 INSERT INTO return_requests (
@@ -293,7 +298,7 @@ async def create_sale_return(
                     total_return_amount, credit_note_number
                 ) VALUES (
                     :org_id, :return_number, :return_date,
-                    'SALES', :order_id, :customer_id,
+                    'SALES', NULL, :customer_id,
                     :reason, 'approved',
                     :total_amount, :credit_note_no
                 )
@@ -303,7 +308,6 @@ async def create_sale_return(
                 "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",  # Default org
                 "return_number": return_number,
                 "return_date": return_data["return_date"],
-                "order_id": return_data.get("invoice_id", return_data.get("original_sale_id")),
                 "customer_id": return_data.get("customer_id", return_data.get("party_id")),
                 "reason": return_data.get("return_reason", return_data.get("reason", "")),
                 "total_amount": total_amount,
@@ -321,11 +325,13 @@ async def create_sale_return(
                     INSERT INTO return_items (
                         return_id, product_id,
                         batch_id, return_quantity, 
-                        original_price, return_price
+                        original_price, return_price,
+                        remarks
                     ) VALUES (
                         :return_id, :product_id,
                         :batch_id, :quantity, 
-                        :rate, :rate
+                        :rate, :rate,
+                        :remarks
                     )
                 """),
                 {
@@ -333,7 +339,8 @@ async def create_sale_return(
                     "product_id": item["product_id"],
                     "batch_id": item.get("batch_id"),
                     "quantity": item["quantity"],
-                    "rate": Decimal(str(item["rate"]))
+                    "rate": Decimal(str(item["rate"])),
+                    "remarks": f"Invoice: {return_data.get('invoice_id', 'N/A')}"
                 }
             )
             
@@ -497,10 +504,13 @@ async def get_sale_return_detail(
         # Get return details
         return_query = """
             SELECT sr.*, c.customer_name as party_name, c.gst_number as party_gst,
-                   i.invoice_number as original_invoice_number
+                   -- Extract invoice number from return items remarks
+                   (SELECT SUBSTRING(ri.remarks, 'Invoice: ([^,]+)')
+                    FROM return_items ri 
+                    WHERE ri.return_id = sr.return_id 
+                    LIMIT 1) as original_invoice_number
             FROM return_requests sr
             LEFT JOIN customers c ON sr.customer_id = c.customer_id
-            LEFT JOIN invoices i ON sr.order_id = i.invoice_id
             WHERE sr.return_id = :return_id AND sr.return_type = 'SALES'
         """
         
