@@ -1,14 +1,15 @@
 """
 Party Ledger API Router
-Handles party-wise ledger entries and due tracking
+Comprehensive ledger management for customers and suppliers
 """
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from decimal import Decimal
+import uuid
 
 from ...database import get_db
 
@@ -16,490 +17,457 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/party-ledger", tags=["party-ledger"])
 
-@router.get("/")
-async def get_party_ledger(
+@router.get("/balance/{party_id}")
+async def get_party_balance(
     party_id: str,
-    from_date: Optional[str] = None,
-    to_date: Optional[str] = None,
+    party_type: str = Query(..., regex="^(customer|supplier)$"),
+    as_of_date: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Get ledger entries for a specific party
-    """
-    try:
-        # Get party details
-        party = db.execute(
-            text("SELECT * FROM parties WHERE party_id = :party_id"),
-            {"party_id": party_id}
-        ).first()
-        
-        if not party:
-            raise HTTPException(status_code=404, detail="Party not found")
-            
-        # Calculate opening balance (before from_date if provided)
-        opening_balance = Decimal("0")
-        if from_date:
-            opening_query = """
-                SELECT 
-                    COALESCE(SUM(debit_amount), 0) - COALESCE(SUM(credit_amount), 0) as balance
-                FROM party_ledger
-                WHERE party_id = :party_id
-                AND transaction_date < :from_date
-            """
-            opening_balance = db.execute(
-                text(opening_query),
-                {"party_id": party_id, "from_date": from_date}
-            ).scalar() or Decimal("0")
-            
-        # Get ledger entries
-        ledger_query = """
-            SELECT 
-                pl.*,
-                CASE 
-                    WHEN pl.reference_type = 'sale' THEN s.invoice_number
-                    WHEN pl.reference_type = 'purchase' THEN p.purchase_number
-                    WHEN pl.reference_type = 'payment' THEN py.payment_number
-                    WHEN pl.reference_type = 'receipt' THEN r.receipt_number
-                    WHEN pl.reference_type = 'sale_return' THEN sr.return_number
-                    WHEN pl.reference_type = 'purchase_return' THEN pr.return_number
-                    WHEN pl.reference_type = 'credit_note' THEN cn.note_number
-                    WHEN pl.reference_type = 'debit_note' THEN dn.note_number
-                    ELSE NULL
-                END as reference_number
-            FROM party_ledger pl
-            LEFT JOIN sales s ON pl.reference_type = 'sale' AND pl.reference_id = s.sale_id
-            LEFT JOIN purchases p ON pl.reference_type = 'purchase' AND pl.reference_id = p.purchase_id
-            LEFT JOIN payments py ON pl.reference_type = 'payment' AND pl.reference_id = py.payment_id
-            LEFT JOIN receipts r ON pl.reference_type = 'receipt' AND pl.reference_id = r.receipt_id
-            LEFT JOIN sale_returns sr ON pl.reference_type = 'sale_return' AND pl.reference_id = sr.return_id
-            LEFT JOIN purchase_returns pr ON pl.reference_type = 'purchase_return' AND pl.reference_id = pr.return_id
-            LEFT JOIN credit_notes cn ON pl.reference_type = 'credit_note' AND pl.reference_id = cn.note_id
-            LEFT JOIN debit_notes dn ON pl.reference_type = 'debit_note' AND pl.reference_id = dn.note_id
-            WHERE pl.party_id = :party_id
-        """
-        
-        params = {"party_id": party_id}
-        
-        if from_date:
-            ledger_query += " AND pl.transaction_date >= :from_date"
-            params["from_date"] = from_date
-            
-        if to_date:
-            ledger_query += " AND pl.transaction_date <= :to_date"
-            params["to_date"] = to_date
-            
-        ledger_query += " ORDER BY pl.transaction_date, pl.created_at"
-        
-        entries = db.execute(text(ledger_query), params).fetchall()
-        
-        # Calculate running balance
-        ledger_entries = []
-        running_balance = opening_balance
-        
-        for entry in entries:
-            running_balance += entry.debit_amount - entry.credit_amount
-            entry_dict = dict(entry._mapping)
-            entry_dict["running_balance"] = float(running_balance)
-            ledger_entries.append(entry_dict)
-            
-        # Calculate closing balance
-        closing_balance = running_balance
-        
-        # Get current outstanding
-        outstanding_query = """
-            SELECT 
-                COALESCE(SUM(debit_amount), 0) - COALESCE(SUM(credit_amount), 0) as balance
-            FROM party_ledger
-            WHERE party_id = :party_id
-        """
-        current_outstanding = db.execute(
-            text(outstanding_query),
-            {"party_id": party_id}
-        ).scalar() or Decimal("0")
-        
-        return {
-            "party": dict(party._mapping),
-            "opening_balance": float(opening_balance),
-            "closing_balance": float(closing_balance),
-            "current_outstanding": float(current_outstanding),
-            "entries": ledger_entries
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching party ledger: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/outstanding")
-async def get_outstanding_parties(
-    party_type: Optional[str] = Query(None, description="customer/supplier/all"),
-    min_amount: Optional[float] = None,
-    days_overdue: Optional[int] = None,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
-):
-    """
-    Get parties with outstanding balances
+    Get current balance for a party
     """
     try:
         query = """
             SELECT 
-                p.party_id,
-                p.party_name,
-                p.party_type,
-                p.phone,
-                p.email,
-                p.credit_limit,
-                p.credit_days,
-                COALESCE(SUM(pl.debit_amount), 0) - COALESCE(SUM(pl.credit_amount), 0) as outstanding_amount,
-                MAX(pl.transaction_date) as last_transaction_date,
-                MIN(CASE 
-                    WHEN pl.debit_amount > 0 AND pl.due_date IS NOT NULL 
-                    THEN pl.due_date 
-                    ELSE NULL 
-                END) as oldest_due_date
-            FROM parties p
-            LEFT JOIN party_ledger pl ON p.party_id = pl.party_id
-            WHERE 1=1
-        """
-        
-        params = {"skip": skip, "limit": limit}
-        
-        if party_type and party_type != "all":
-            query += " AND p.party_type = :party_type"
-            params["party_type"] = party_type
-            
-        query += " GROUP BY p.party_id"
-        
-        # Having clause for filters
-        having_conditions = []
-        
-        having_conditions.append("COALESCE(SUM(pl.debit_amount), 0) - COALESCE(SUM(pl.credit_amount), 0) != 0")
-        
-        if min_amount:
-            having_conditions.append("ABS(COALESCE(SUM(pl.debit_amount), 0) - COALESCE(SUM(pl.credit_amount), 0)) >= :min_amount")
-            params["min_amount"] = min_amount
-            
-        if having_conditions:
-            query += " HAVING " + " AND ".join(having_conditions)
-            
-        query += " ORDER BY outstanding_amount DESC LIMIT :limit OFFSET :skip"
-        
-        parties = db.execute(text(query), params).fetchall()
-        
-        # Process results to add ageing info
-        result = []
-        current_date = datetime.now().date()
-        
-        for party in parties:
-            party_dict = dict(party._mapping)
-            
-            # Calculate days overdue if oldest_due_date exists
-            if party.oldest_due_date:
-                days_past_due = (current_date - party.oldest_due_date).days
-                party_dict["days_overdue"] = max(0, days_past_due)
-            else:
-                party_dict["days_overdue"] = 0
-                
-            # Filter by days_overdue if specified
-            if days_overdue is None or party_dict["days_overdue"] >= days_overdue:
-                # Get ageing buckets
-                ageing = await get_party_ageing(party.party_id, db)
-                party_dict["ageing"] = ageing
-                result.append(party_dict)
-                
-        # Get total count
-        count_query = query.replace("SELECT p.party_id,", "SELECT COUNT(DISTINCT p.party_id)")
-        count_query = count_query.split("ORDER BY")[0]
-        total = db.execute(text(count_query), params).scalar()
-        
-        return {
-            "total": total,
-            "parties": result
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching outstanding parties: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-async def get_party_ageing(party_id: str, db: Session):
-    """
-    Calculate ageing buckets for a party
-    """
-    try:
-        current_date = datetime.now().date()
-        
-        ageing_query = """
-            SELECT 
-                SUM(CASE 
-                    WHEN CURRENT_DATE - pl.transaction_date <= 30 
-                    THEN pl.debit_amount - pl.credit_amount 
-                    ELSE 0 
-                END) as current_bucket,
-                SUM(CASE 
-                    WHEN CURRENT_DATE - pl.transaction_date > 30 
-                    AND CURRENT_DATE - pl.transaction_date <= 60 
-                    THEN pl.debit_amount - pl.credit_amount 
-                    ELSE 0 
-                END) as days_30_60,
-                SUM(CASE 
-                    WHEN CURRENT_DATE - pl.transaction_date > 60 
-                    AND CURRENT_DATE - pl.transaction_date <= 90 
-                    THEN pl.debit_amount - pl.credit_amount 
-                    ELSE 0 
-                END) as days_60_90,
-                SUM(CASE 
-                    WHEN CURRENT_DATE - pl.transaction_date > 90 
-                    THEN pl.debit_amount - pl.credit_amount 
-                    ELSE 0 
-                END) as above_90
-            FROM party_ledger pl
-            WHERE pl.party_id = :party_id
-            AND pl.debit_amount > pl.credit_amount
-        """
-        
-        ageing = db.execute(
-            text(ageing_query),
-            {"party_id": party_id}
-        ).first()
-        
-        return {
-            "0-30": float(ageing.current_bucket or 0),
-            "31-60": float(ageing.days_30_60 or 0),
-            "61-90": float(ageing.days_60_90 or 0),
-            "90+": float(ageing.above_90 or 0)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error calculating ageing: {e}")
-        return {"0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
-
-@router.get("/summary")
-async def get_ledger_summary(
-    party_type: Optional[str] = Query(None, description="customer/supplier/all"),
-    db: Session = Depends(get_db)
-):
-    """
-    Get summary of all party ledgers
-    """
-    try:
-        base_query = """
-            SELECT 
-                COUNT(DISTINCT p.party_id) as total_parties,
-                COUNT(DISTINCT CASE 
-                    WHEN outstanding.balance > 0 THEN p.party_id 
-                END) as parties_with_dues,
-                COALESCE(SUM(CASE 
-                    WHEN outstanding.balance > 0 THEN outstanding.balance 
-                    ELSE 0 
-                END), 0) as total_receivable,
-                COALESCE(SUM(CASE 
-                    WHEN outstanding.balance < 0 THEN ABS(outstanding.balance) 
-                    ELSE 0 
-                END), 0) as total_payable
-            FROM parties p
-            LEFT JOIN (
-                SELECT 
-                    party_id,
-                    SUM(debit_amount) - SUM(credit_amount) as balance
-                FROM party_ledger
-                GROUP BY party_id
-            ) outstanding ON p.party_id = outstanding.party_id
-            WHERE 1=1
-        """
-        
-        params = {}
-        
-        if party_type and party_type != "all":
-            base_query += " AND p.party_type = :party_type"
-            params["party_type"] = party_type
-            
-        summary = db.execute(text(base_query), params).first()
-        
-        # Get overdue summary
-        overdue_query = """
-            SELECT 
-                COUNT(DISTINCT pl.party_id) as parties_overdue,
-                COALESCE(SUM(pl.debit_amount - pl.credit_amount), 0) as amount_overdue
-            FROM party_ledger pl
-            JOIN parties p ON pl.party_id = p.party_id
-            WHERE pl.due_date < CURRENT_DATE
-            AND pl.debit_amount > pl.credit_amount
-        """
-        
-        if party_type and party_type != "all":
-            overdue_query += " AND p.party_type = :party_type"
-            
-        overdue = db.execute(text(overdue_query), params).first()
-        
-        return {
-            "total_parties": summary.total_parties,
-            "parties_with_dues": summary.parties_with_dues,
-            "total_receivable": float(summary.total_receivable),
-            "total_payable": float(summary.total_payable),
-            "parties_overdue": overdue.parties_overdue,
-            "amount_overdue": float(overdue.amount_overdue)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching ledger summary: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/send-reminder")
-async def send_payment_reminder(
-    reminder_data: dict,
-    db: Session = Depends(get_db)
-):
-    """
-    Send payment reminder to party via email/SMS
-    """
-    try:
-        # Validate required fields
-        if "party_id" not in reminder_data:
-            raise HTTPException(status_code=400, detail="Party ID required")
-            
-        # Get party details
-        party = db.execute(
-            text("SELECT * FROM parties WHERE party_id = :party_id"),
-            {"party_id": reminder_data["party_id"]}
-        ).first()
-        
-        if not party:
-            raise HTTPException(status_code=404, detail="Party not found")
-            
-        # Get outstanding amount
-        outstanding_query = """
-            SELECT 
-                COALESCE(SUM(debit_amount), 0) - COALESCE(SUM(credit_amount), 0) as balance
+                COALESCE(SUM(debit_amount - credit_amount), 0) as balance,
+                CASE 
+                    WHEN COALESCE(SUM(debit_amount - credit_amount), 0) >= 0 THEN 'Dr'
+                    ELSE 'Cr'
+                END as balance_type,
+                COUNT(*) as transaction_count,
+                MAX(transaction_date) as last_transaction_date
             FROM party_ledger
-            WHERE party_id = :party_id
+            WHERE party_id = :party_id 
+            AND party_type = :party_type
         """
-        outstanding = db.execute(
-            text(outstanding_query),
-            {"party_id": reminder_data["party_id"]}
-        ).scalar() or Decimal("0")
+        params = {"party_id": party_id, "party_type": party_type}
         
-        if outstanding <= 0:
-            raise HTTPException(
-                status_code=400, 
-                detail="No outstanding amount for this party"
-            )
+        if as_of_date:
+            query += " AND transaction_date <= :as_of_date"
+            params["as_of_date"] = as_of_date
             
-        # Log reminder sent
-        db.execute(
-            text("""
-                INSERT INTO communication_log (
-                    log_id, org_id, party_id, communication_type,
-                    communication_date, subject, message, status
-                ) VALUES (
-                    gen_random_uuid(), :org_id, :party_id, :type,
-                    CURRENT_TIMESTAMP, :subject, :message, 'sent'
-                )
-            """),
-            {
-                "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                "party_id": reminder_data["party_id"],
-                "type": reminder_data.get("reminder_type", "email"),
-                "subject": f"Payment Reminder - Outstanding Amount: {outstanding}",
-                "message": reminder_data.get("message", f"Your outstanding amount is {outstanding}")
-            }
-        )
+        result = db.execute(text(query), params).fetchone()
         
-        db.commit()
-        
-        # In real implementation, integrate with email/SMS service
         return {
-            "status": "success",
-            "message": f"Reminder sent to {party.party_name}",
-            "outstanding_amount": float(outstanding),
-            "reminder_type": reminder_data.get("reminder_type", "email")
+            "party_id": party_id,
+            "party_type": party_type,
+            "balance": abs(float(result.balance)),
+            "balance_type": result.balance_type if result.balance != 0 else "Dr",
+            "transaction_count": result.transaction_count,
+            "last_transaction_date": result.last_transaction_date,
+            "as_of_date": as_of_date or date.today().isoformat()
         }
         
-    except HTTPException:
-        db.rollback()
-        raise
     except Exception as e:
-        db.rollback()
-        logger.error(f"Error sending reminder: {e}")
+        logger.error(f"Error fetching party balance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/statement/{party_id}")
 async def get_party_statement(
     party_id: str,
+    party_type: str = Query(..., regex="^(customer|supplier)$"),
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
-    format: str = Query("json", description="json/pdf"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
     """
-    Get party account statement
+    Get detailed statement for a party
     """
     try:
-        # Get ledger data
-        ledger_data = await get_party_ledger(party_id, from_date, to_date, db)
+        # Base query
+        query = """
+            SELECT 
+                ledger_id,
+                transaction_date,
+                transaction_type,
+                reference_type,
+                reference_id,
+                reference_number,
+                description,
+                debit_amount,
+                credit_amount,
+                running_balance,
+                balance_type,
+                payment_mode,
+                created_at
+            FROM party_ledger
+            WHERE party_id = :party_id
+            AND party_type = :party_type
+        """
         
-        if format == "json":
-            return ledger_data
-        elif format == "pdf":
-            # In real implementation, generate PDF
-            return {
-                "status": "success",
-                "message": "PDF generation not implemented",
-                "data": ledger_data
-            }
-        else:
-            raise HTTPException(status_code=400, detail="Invalid format")
+        params = {
+            "party_id": party_id,
+            "party_type": party_type,
+            "skip": skip,
+            "limit": limit
+        }
+        
+        # Add date filters
+        if from_date:
+            query += " AND transaction_date >= :from_date"
+            params["from_date"] = from_date
+        if to_date:
+            query += " AND transaction_date <= :to_date"
+            params["to_date"] = to_date
             
-    except HTTPException:
-        raise
+        # Order and pagination
+        query += " ORDER BY transaction_date DESC, created_at DESC LIMIT :limit OFFSET :skip"
+        
+        # Get transactions
+        transactions = db.execute(text(query), params).fetchall()
+        
+        # Get opening balance
+        opening_query = """
+            SELECT 
+                COALESCE(SUM(debit_amount - credit_amount), 0) as opening_balance
+            FROM party_ledger
+            WHERE party_id = :party_id
+            AND party_type = :party_type
+        """
+        opening_params = {"party_id": party_id, "party_type": party_type}
+        
+        if from_date:
+            opening_query += " AND transaction_date < :from_date"
+            opening_params["from_date"] = from_date
+            
+        opening_result = db.execute(text(opening_query), opening_params).fetchone()
+        opening_balance = float(opening_result.opening_balance)
+        
+        # Format transactions
+        statement_entries = []
+        running_balance = opening_balance
+        
+        for txn in reversed(list(transactions)):  # Process in chronological order
+            running_balance += float(txn.debit_amount) - float(txn.credit_amount)
+            
+            statement_entries.append({
+                "ledger_id": txn.ledger_id,
+                "date": txn.transaction_date,
+                "transaction_type": txn.transaction_type,
+                "reference": f"{txn.reference_type or ''} {txn.reference_number or ''}".strip(),
+                "description": txn.description,
+                "debit": float(txn.debit_amount) if txn.debit_amount > 0 else None,
+                "credit": float(txn.credit_amount) if txn.credit_amount > 0 else None,
+                "balance": abs(running_balance),
+                "balance_type": "Dr" if running_balance >= 0 else "Cr",
+                "payment_mode": txn.payment_mode
+            })
+            
+        # Reverse to show latest first
+        statement_entries.reverse()
+        
+        # Get party details
+        if party_type == "customer":
+            party_query = "SELECT customer_name as name, phone, email FROM customers WHERE customer_id = :party_id"
+        else:
+            party_query = "SELECT supplier_name as name, phone, email FROM suppliers WHERE supplier_id = :party_id"
+            
+        party = db.execute(text(party_query), {"party_id": party_id}).fetchone()
+        
+        return {
+            "party_id": party_id,
+            "party_name": party.name if party else "Unknown",
+            "party_type": party_type,
+            "phone": party.phone if party else None,
+            "email": party.email if party else None,
+            "from_date": from_date,
+            "to_date": to_date,
+            "opening_balance": abs(opening_balance),
+            "opening_balance_type": "Dr" if opening_balance >= 0 else "Cr",
+            "closing_balance": abs(running_balance),
+            "closing_balance_type": "Dr" if running_balance >= 0 else "Cr",
+            "transactions": statement_entries,
+            "total_transactions": len(statement_entries)
+        }
+        
     except Exception as e:
-        logger.error(f"Error generating statement: {e}")
+        logger.error(f"Error fetching party statement: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/reconcile")
-async def reconcile_ledger_entry(
-    reconcile_data: dict,
+@router.get("/outstanding-bills/{party_id}")
+async def get_outstanding_bills(
+    party_id: str,
+    party_type: str = Query(..., regex="^(customer|supplier)$"),
+    status: Optional[str] = Query(None, regex="^(outstanding|partial|overdue|paid)$"),
     db: Session = Depends(get_db)
 ):
     """
-    Reconcile ledger entries
+    Get outstanding bills for a party
+    """
+    try:
+        query = """
+            SELECT 
+                bill_id,
+                bill_type,
+                bill_number,
+                bill_date,
+                due_date,
+                bill_amount,
+                paid_amount,
+                outstanding_amount,
+                status,
+                days_overdue,
+                aging_bucket,
+                reference_type,
+                reference_id
+            FROM outstanding_bills
+            WHERE party_id = :party_id
+            AND party_type = :party_type
+        """
+        params = {"party_id": party_id, "party_type": party_type}
+        
+        if status:
+            query += " AND status = :status"
+            params["status"] = status
+        else:
+            query += " AND status IN ('outstanding', 'partial', 'overdue')"
+            
+        query += " ORDER BY due_date, bill_date"
+        
+        bills = db.execute(text(query), params).fetchall()
+        
+        # Calculate summary
+        summary = {
+            "total_bills": len(bills),
+            "total_outstanding": sum(float(bill.outstanding_amount) for bill in bills),
+            "overdue_amount": sum(float(bill.outstanding_amount) for bill in bills if bill.days_overdue > 0),
+            "current_amount": sum(float(bill.outstanding_amount) for bill in bills if bill.days_overdue <= 0)
+        }
+        
+        # Format bills
+        bills_data = []
+        for bill in bills:
+            bills_data.append({
+                "bill_id": bill.bill_id,
+                "bill_type": bill.bill_type,
+                "bill_number": bill.bill_number,
+                "bill_date": bill.bill_date,
+                "due_date": bill.due_date,
+                "bill_amount": float(bill.bill_amount),
+                "paid_amount": float(bill.paid_amount),
+                "outstanding_amount": float(bill.outstanding_amount),
+                "status": bill.status,
+                "days_overdue": bill.days_overdue,
+                "aging_bucket": bill.aging_bucket,
+                "reference": f"{bill.reference_type or ''} {bill.reference_id or ''}".strip()
+            })
+            
+        return {
+            "party_id": party_id,
+            "party_type": party_type,
+            "summary": summary,
+            "bills": bills_data
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching outstanding bills: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/aging-analysis")
+async def get_aging_analysis(
+    party_type: Optional[str] = Query(None, regex="^(customer|supplier)$"),
+    org_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get aging analysis for all parties or specific type
+    """
+    try:
+        query = """
+            SELECT 
+                party_id,
+                party_type,
+                party_name,
+                current_amount,
+                overdue_0_30,
+                overdue_31_60,
+                overdue_61_90,
+                overdue_91_120,
+                overdue_above_120,
+                total_outstanding,
+                max_days_overdue
+            FROM aging_analysis
+            WHERE total_outstanding > 0
+        """
+        params = {}
+        
+        if party_type:
+            query += " AND party_type = :party_type"
+            params["party_type"] = party_type
+            
+        if org_id:
+            query += " AND org_id = :org_id"
+            params["org_id"] = org_id
+            
+        query += " ORDER BY total_outstanding DESC"
+        
+        results = db.execute(text(query), params).fetchall()
+        
+        # Calculate totals
+        totals = {
+            "current": 0,
+            "0_30_days": 0,
+            "31_60_days": 0,
+            "61_90_days": 0,
+            "91_120_days": 0,
+            "above_120_days": 0,
+            "total": 0
+        }
+        
+        parties = []
+        for row in results:
+            totals["current"] += float(row.current_amount)
+            totals["0_30_days"] += float(row.overdue_0_30)
+            totals["31_60_days"] += float(row.overdue_31_60)
+            totals["61_90_days"] += float(row.overdue_61_90)
+            totals["91_120_days"] += float(row.overdue_91_120)
+            totals["above_120_days"] += float(row.overdue_above_120)
+            totals["total"] += float(row.total_outstanding)
+            
+            parties.append({
+                "party_id": row.party_id,
+                "party_type": row.party_type,
+                "party_name": row.party_name,
+                "aging": {
+                    "current": float(row.current_amount),
+                    "0_30_days": float(row.overdue_0_30),
+                    "31_60_days": float(row.overdue_31_60),
+                    "61_90_days": float(row.overdue_61_90),
+                    "91_120_days": float(row.overdue_91_120),
+                    "above_120_days": float(row.overdue_above_120)
+                },
+                "total_outstanding": float(row.total_outstanding),
+                "max_days_overdue": row.max_days_overdue
+            })
+            
+        return {
+            "summary": totals,
+            "party_count": len(parties),
+            "parties": parties
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching aging analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/entry")
+async def create_ledger_entry(
+    entry_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new ledger entry
     """
     try:
         # Validate required fields
-        required_fields = ["ledger_id", "reconciled_date", "reconciled_by"]
+        required_fields = ["party_id", "party_type", "transaction_date", "transaction_type"]
         for field in required_fields:
-            if field not in reconcile_data:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Missing required field: {field}"
-                )
+            if field not in entry_data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
                 
-        # Update ledger entry
-        db.execute(
+        # Ensure either debit or credit amount is provided
+        if not entry_data.get("debit_amount") and not entry_data.get("credit_amount"):
+            raise HTTPException(status_code=400, detail="Either debit_amount or credit_amount must be provided")
+            
+        # Insert ledger entry
+        result = db.execute(
             text("""
-                UPDATE party_ledger
-                SET reconciled = true,
-                    reconciled_date = :reconciled_date,
-                    reconciled_by = :reconciled_by,
-                    reconciliation_notes = :notes,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE ledger_id = :ledger_id
+                INSERT INTO party_ledger (
+                    org_id, party_id, party_type,
+                    transaction_date, transaction_type,
+                    reference_type, reference_id, reference_number,
+                    debit_amount, credit_amount,
+                    description, narration,
+                    payment_mode, instrument_number,
+                    instrument_date, bank_name
+                ) VALUES (
+                    :org_id, :party_id, :party_type,
+                    :transaction_date, :transaction_type,
+                    :reference_type, :reference_id, :reference_number,
+                    :debit_amount, :credit_amount,
+                    :description, :narration,
+                    :payment_mode, :instrument_number,
+                    :instrument_date, :bank_name
+                )
+                RETURNING ledger_id, running_balance, balance_type
             """),
             {
-                "ledger_id": reconcile_data["ledger_id"],
-                "reconciled_date": reconcile_data["reconciled_date"],
-                "reconciled_by": reconcile_data["reconciled_by"],
-                "notes": reconcile_data.get("notes", "")
+                "org_id": entry_data.get("org_id", "12de5e22-eee7-4d25-b3a7-d16d01c6170f"),
+                "party_id": entry_data["party_id"],
+                "party_type": entry_data["party_type"],
+                "transaction_date": entry_data["transaction_date"],
+                "transaction_type": entry_data["transaction_type"],
+                "reference_type": entry_data.get("reference_type"),
+                "reference_id": entry_data.get("reference_id"),
+                "reference_number": entry_data.get("reference_number"),
+                "debit_amount": Decimal(str(entry_data.get("debit_amount", 0))),
+                "credit_amount": Decimal(str(entry_data.get("credit_amount", 0))),
+                "description": entry_data.get("description"),
+                "narration": entry_data.get("narration"),
+                "payment_mode": entry_data.get("payment_mode"),
+                "instrument_number": entry_data.get("instrument_number"),
+                "instrument_date": entry_data.get("instrument_date"),
+                "bank_name": entry_data.get("bank_name")
             }
-        )
+        ).fetchone()
+        
+        # Handle bill creation/update if it's an invoice or payment
+        if entry_data["transaction_type"] == "invoice":
+            # Create outstanding bill
+            db.execute(
+                text("""
+                    INSERT INTO outstanding_bills (
+                        org_id, party_id, party_type,
+                        bill_type, bill_number, bill_date,
+                        due_date, reference_type, reference_id,
+                        bill_amount
+                    ) VALUES (
+                        :org_id, :party_id, :party_type,
+                        :bill_type, :bill_number, :bill_date,
+                        :due_date, :reference_type, :reference_id,
+                        :bill_amount
+                    )
+                    ON CONFLICT (org_id, bill_number) DO NOTHING
+                """),
+                {
+                    "org_id": entry_data.get("org_id", "12de5e22-eee7-4d25-b3a7-d16d01c6170f"),
+                    "party_id": entry_data["party_id"],
+                    "party_type": entry_data["party_type"],
+                    "bill_type": "invoice" if entry_data["party_type"] == "customer" else "purchase_bill",
+                    "bill_number": entry_data.get("reference_number"),
+                    "bill_date": entry_data["transaction_date"],
+                    "due_date": entry_data.get("due_date", 
+                        (datetime.strptime(entry_data["transaction_date"], "%Y-%m-%d") + timedelta(days=30)).date()
+                    ),
+                    "reference_type": entry_data.get("reference_type"),
+                    "reference_id": entry_data.get("reference_id"),
+                    "bill_amount": Decimal(str(entry_data.get("debit_amount", 0)))
+                }
+            )
+            
+        elif entry_data["transaction_type"] == "payment":
+            # Allocate payment to outstanding bills (FIFO)
+            payment_amount = Decimal(str(entry_data.get("credit_amount", 0)))
+            if payment_amount > 0:
+                _allocate_payment_to_bills(
+                    db, 
+                    entry_data["party_id"], 
+                    entry_data["party_type"],
+                    payment_amount,
+                    result.ledger_id
+                )
         
         db.commit()
         
         return {
             "status": "success",
-            "message": "Ledger entry reconciled successfully"
+            "ledger_id": result.ledger_id,
+            "running_balance": float(result.running_balance),
+            "balance_type": result.balance_type,
+            "message": "Ledger entry created successfully"
         }
         
     except HTTPException:
@@ -507,5 +475,168 @@ async def reconcile_ledger_entry(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error reconciling ledger: {e}")
+        logger.error(f"Error creating ledger entry: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/reconcile/{ledger_id}")
+async def reconcile_entry(
+    ledger_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Mark a ledger entry as reconciled
+    """
+    try:
+        result = db.execute(
+            text("""
+                UPDATE party_ledger
+                SET is_reconciled = TRUE,
+                    reconciliation_date = CURRENT_DATE
+                WHERE ledger_id = :ledger_id
+                RETURNING ledger_id
+            """),
+            {"ledger_id": ledger_id}
+        ).fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Ledger entry not found")
+            
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": "Entry reconciled successfully"
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error reconciling entry: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def _allocate_payment_to_bills(
+    db: Session, 
+    party_id: str, 
+    party_type: str,
+    payment_amount: Decimal,
+    payment_ledger_id: str
+):
+    """
+    Internal function to allocate payment to outstanding bills using FIFO
+    """
+    # Get outstanding bills in FIFO order
+    bills = db.execute(
+        text("""
+            SELECT bill_id, outstanding_amount
+            FROM outstanding_bills
+            WHERE party_id = :party_id
+            AND party_type = :party_type
+            AND status IN ('outstanding', 'partial', 'overdue')
+            ORDER BY bill_date, bill_id
+            FOR UPDATE
+        """),
+        {"party_id": party_id, "party_type": party_type}
+    ).fetchall()
+    
+    remaining_amount = payment_amount
+    
+    for bill in bills:
+        if remaining_amount <= 0:
+            break
+            
+        allocation_amount = min(remaining_amount, Decimal(str(bill.outstanding_amount)))
+        
+        # Create allocation record
+        db.execute(
+            text("""
+                INSERT INTO payment_allocations (
+                    payment_ledger_id, bill_id,
+                    allocated_amount, allocation_date
+                ) VALUES (
+                    :payment_ledger_id, :bill_id,
+                    :allocated_amount, CURRENT_DATE
+                )
+            """),
+            {
+                "payment_ledger_id": payment_ledger_id,
+                "bill_id": bill.bill_id,
+                "allocated_amount": allocation_amount
+            }
+        )
+        
+        # Update bill
+        db.execute(
+            text("""
+                UPDATE outstanding_bills
+                SET paid_amount = paid_amount + :amount
+                WHERE bill_id = :bill_id
+            """),
+            {
+                "amount": allocation_amount,
+                "bill_id": bill.bill_id
+            }
+        )
+        
+        remaining_amount -= allocation_amount
+
+@router.get("/reminders/pending")
+async def get_pending_reminders(
+    reminder_date: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get pending collection reminders
+    """
+    try:
+        query = """
+            SELECT 
+                r.reminder_id,
+                r.party_id,
+                r.reminder_type,
+                r.reminder_date,
+                r.message_content,
+                r.outstanding_amount,
+                r.bills_count,
+                c.customer_name as party_name,
+                c.phone,
+                c.email
+            FROM collection_reminders r
+            JOIN customers c ON r.party_id = c.customer_id
+            WHERE r.status = 'pending'
+        """
+        params = {}
+        
+        if reminder_date:
+            query += " AND r.reminder_date = :reminder_date"
+            params["reminder_date"] = reminder_date
+        else:
+            query += " AND r.reminder_date <= CURRENT_DATE"
+            
+        query += " ORDER BY r.reminder_date, r.created_at"
+        
+        reminders = db.execute(text(query), params).fetchall()
+        
+        return {
+            "count": len(reminders),
+            "reminders": [
+                {
+                    "reminder_id": r.reminder_id,
+                    "party_id": r.party_id,
+                    "party_name": r.party_name,
+                    "phone": r.phone,
+                    "email": r.email,
+                    "reminder_type": r.reminder_type,
+                    "reminder_date": r.reminder_date,
+                    "message": r.message_content,
+                    "outstanding_amount": float(r.outstanding_amount) if r.outstanding_amount else 0,
+                    "bills_count": r.bills_count
+                }
+                for r in reminders
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching pending reminders: {e}")
         raise HTTPException(status_code=500, detail=str(e))

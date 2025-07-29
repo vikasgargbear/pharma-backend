@@ -420,3 +420,103 @@ async def update_product_properties(
             status_code=500,
             detail=f"Failed to update product: {str(e)}"
         )
+
+@router.get("/alerts")
+async def get_stock_alerts(
+    alert_type: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get stock alerts for low stock, expiring items, etc.
+    """
+    org_id = DEFAULT_ORG_ID
+    
+    try:
+        # Get products with low stock
+        low_stock_query = """
+            SELECT 
+                p.product_id,
+                p.product_name,
+                p.product_code,
+                p.category,
+                COALESCE(p.minimum_stock_level, 20) as reorder_level,
+                COALESCE(SUM(b.quantity_available), 0) as current_stock,
+                'low_stock' as alert_type,
+                CASE 
+                    WHEN COALESCE(SUM(b.quantity_available), 0) = 0 THEN 'critical'
+                    WHEN COALESCE(SUM(b.quantity_available), 0) <= 10 THEN 'high'
+                    ELSE 'medium'
+                END as priority
+            FROM products p
+            LEFT JOIN batches b ON p.product_id = b.product_id 
+                AND b.org_id = :org_id 
+                AND b.batch_status = 'active'
+            WHERE p.org_id = :org_id
+            GROUP BY p.product_id, p.product_name, p.product_code, p.category, p.minimum_stock_level
+            HAVING COALESCE(SUM(b.quantity_available), 0) <= COALESCE(p.minimum_stock_level, 20)
+        """
+        
+        # Get expiring items
+        expiry_query = """
+            SELECT 
+                p.product_id,
+                p.product_name,
+                p.product_code,
+                b.batch_number,
+                b.expiry_date,
+                b.quantity_available,
+                'expiring' as alert_type,
+                CASE 
+                    WHEN b.expiry_date <= CURRENT_DATE THEN 'critical'
+                    WHEN b.expiry_date <= CURRENT_DATE + INTERVAL '30 days' THEN 'high'
+                    WHEN b.expiry_date <= CURRENT_DATE + INTERVAL '90 days' THEN 'medium'
+                    ELSE 'low'
+                END as priority
+            FROM batches b
+            JOIN products p ON b.product_id = p.product_id
+            WHERE b.org_id = :org_id
+                AND b.batch_status = 'active'
+                AND b.quantity_available > 0
+                AND b.expiry_date <= CURRENT_DATE + INTERVAL '90 days'
+        """
+        
+        alerts = {
+            "low_stock": [],
+            "expiring": [],
+            "out_of_stock": [],
+            "summary": {
+                "total_alerts": 0,
+                "critical": 0,
+                "high": 0,
+                "medium": 0
+            }
+        }
+        
+        # Execute queries
+        if not alert_type or alert_type in ['low_stock', 'all']:
+            result = db.execute(text(low_stock_query), {"org_id": org_id})
+            for row in result:
+                alert_data = dict(row._mapping)
+                alerts["low_stock"].append(alert_data)
+                if alert_data["current_stock"] == 0:
+                    alerts["out_of_stock"].append(alert_data)
+                    
+        if not alert_type or alert_type in ['expiring', 'all']:
+            result = db.execute(text(expiry_query), {"org_id": org_id})
+            for row in result:
+                alerts["expiring"].append(dict(row._mapping))
+        
+        # Calculate summary
+        all_alerts = alerts["low_stock"] + alerts["expiring"]
+        alerts["summary"]["total_alerts"] = len(all_alerts)
+        alerts["summary"]["critical"] = len([a for a in all_alerts if a.get("priority") == "critical"])
+        alerts["summary"]["high"] = len([a for a in all_alerts if a.get("priority") == "high"])
+        alerts["summary"]["medium"] = len([a for a in all_alerts if a.get("priority") == "medium"])
+        
+        return alerts
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get stock alerts: {str(e)}"
+        )
