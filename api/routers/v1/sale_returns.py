@@ -347,7 +347,8 @@ async def create_sale_return(
                 db.execute(
                     text("""
                         UPDATE batches 
-                        SET quantity = quantity + :quantity
+                        SET quantity_available = quantity_available + :quantity,
+                            quantity_returned = quantity_returned + :quantity
                         WHERE batch_id = :batch_id
                     """),
                     {
@@ -558,7 +559,8 @@ async def cancel_sale_return(
                 db.execute(
                     text("""
                         UPDATE batches 
-                        SET quantity = quantity - :quantity
+                        SET quantity_available = quantity_available - :quantity,
+                            quantity_returned = quantity_returned - :quantity
                         WHERE batch_id = :batch_id
                     """),
                     {
