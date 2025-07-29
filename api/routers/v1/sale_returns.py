@@ -31,16 +31,16 @@ async def get_sale_returns(
     """
     try:
         query = """
-            SELECT sr.*, p.party_name, i.invoice_number as original_invoice_number
-            FROM sale_returns sr
-            LEFT JOIN parties p ON sr.party_id = p.party_id
-            LEFT JOIN invoices i ON sr.original_sale_id = i.invoice_id
-            WHERE 1=1
+            SELECT sr.*, c.customer_name as party_name, i.invoice_number as original_invoice_number
+            FROM return_requests sr
+            LEFT JOIN customers c ON sr.customer_id = c.customer_id
+            LEFT JOIN invoices i ON sr.order_id = i.invoice_id
+            WHERE sr.return_type = 'SALES'
         """
         params = {"skip": skip, "limit": limit}
         
         if party_id:
-            query += " AND sr.party_id = :party_id"
+            query += " AND sr.customer_id = :party_id"
             params["party_id"] = party_id
             
         if from_date:
@@ -72,10 +72,10 @@ async def get_sale_returns(
             
         # Get total count
         count_query = """
-            SELECT COUNT(*) FROM sales_returns sr WHERE 1=1
+            SELECT COUNT(*) FROM return_requests sr WHERE 1=1 AND sr.return_type = 'SALES'
         """
         if party_id:
-            count_query += " AND sr.party_id = :party_id"
+            count_query += " AND sr.customer_id = :party_id"
         if from_date:
             count_query += " AND sr.return_date >= :from_date"
         if to_date:
@@ -140,9 +140,9 @@ async def get_returnable_invoices(
             # Check how much has already been returned
             returned_query = """
                 SELECT COALESCE(SUM(sri.return_quantity), 0) as total_returned
-                FROM sales_returns sr
+                FROM return_requests sr
                 JOIN return_items sri ON sr.return_id = sri.return_id
-                WHERE sr.original_sale_id = :invoice_id
+                WHERE sr.order_id = :invoice_id AND sr.return_type = 'SALES'
             """
             total_returned = db.execute(
                 text(returned_query), 
@@ -190,8 +190,8 @@ async def get_invoice_items_for_return(
             LEFT JOIN (
                 SELECT r.product_id, r.batch_id, SUM(r.return_quantity) as return_quantity
                 FROM return_items r
-                JOIN sales_returns sr ON r.return_id = sr.return_id  
-                WHERE sr.original_sale_id = :invoice_id
+                JOIN return_requests sr ON r.return_id = sr.return_id  
+                WHERE sr.order_id = :invoice_id AND sr.return_type = 'SALES'
                 GROUP BY r.product_id, r.batch_id
             ) sri ON (sri.product_id = ii.product_id AND (sri.batch_id = ii.batch_id OR (sri.batch_id IS NULL AND ii.batch_id IS NULL)))
             WHERE ii.invoice_id = :invoice_id
@@ -283,19 +283,19 @@ async def create_sale_return(
             tax_amount += item_tax
             total_amount += item_total + item_tax
             
-        # Create return record
+        # Create return record using return_requests table
         result = db.execute(
             text("""
-                INSERT INTO sales_returns (
+                INSERT INTO return_requests (
                     org_id, return_number, return_date,
-                    original_sale_id, party_id, reason,
-                    subtotal_amount, tax_amount, total_amount,
-                    payment_mode, return_status, credit_note_no
+                    return_type, order_id, customer_id,
+                    return_reason, return_status,
+                    total_return_amount, credit_note_number
                 ) VALUES (
                     :org_id, :return_number, :return_date,
-                    :original_sale_id, :party_id, :reason,
-                    :subtotal, :tax_amount, :total_amount,
-                    :payment_mode, 'completed', :credit_note_no
+                    'SALES', :order_id, :customer_id,
+                    :reason, 'approved',
+                    :total_amount, :credit_note_no
                 )
                 RETURNING return_id
             """),
@@ -303,13 +303,10 @@ async def create_sale_return(
                 "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",  # Default org
                 "return_number": return_number,
                 "return_date": return_data["return_date"],
-                "original_sale_id": return_data.get("invoice_id", return_data.get("original_sale_id")),
-                "party_id": return_data.get("customer_id", return_data.get("party_id")),
+                "order_id": return_data.get("invoice_id", return_data.get("original_sale_id")),
+                "customer_id": return_data.get("customer_id", return_data.get("party_id")),
                 "reason": return_data.get("return_reason", return_data.get("reason", "")),
-                "subtotal": subtotal,
-                "tax_amount": tax_amount,
                 "total_amount": total_amount,
-                "payment_mode": return_data.get("payment_mode", "credit"),
                 "credit_note_no": credit_note_no
             }
         ).fetchone()
@@ -499,12 +496,12 @@ async def get_sale_return_detail(
     try:
         # Get return details
         return_query = """
-            SELECT sr.*, p.party_name, p.gst_number as party_gst,
-                   s.invoice_number as original_invoice_number
-            FROM sale_returns sr
-            LEFT JOIN parties p ON sr.party_id = p.party_id
-            LEFT JOIN sales s ON sr.original_sale_id = s.sale_id
-            WHERE sr.return_id = :return_id
+            SELECT sr.*, c.customer_name as party_name, c.gst_number as party_gst,
+                   i.invoice_number as original_invoice_number
+            FROM return_requests sr
+            LEFT JOIN customers c ON sr.customer_id = c.customer_id
+            LEFT JOIN invoices i ON sr.order_id = i.invoice_id
+            WHERE sr.return_id = :return_id AND sr.return_type = 'SALES'
         """
         
         sale_return = db.execute(
