@@ -520,3 +520,292 @@ async def get_stock_alerts(
             status_code=500,
             detail=f"Failed to get stock alerts: {str(e)}"
         )
+
+@router.get("/batches")
+async def get_batches(
+    product_id: Optional[int] = None,
+    include_movements: bool = False,
+    include_product_details: bool = True,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """
+    Get batches with optional filters
+    """
+    org_id = DEFAULT_ORG_ID
+    
+    try:
+        query = """
+            SELECT 
+                b.batch_id,
+                b.batch_number,
+                b.product_id,
+                b.manufacturing_date,
+                b.expiry_date,
+                b.quantity_received,
+                b.quantity_available,
+                b.quantity_sold,
+                b.quantity_damaged,
+                b.quantity_returned,
+                b.cost_price,
+                b.selling_price,
+                b.mrp,
+                b.batch_status,
+                b.supplier_id,
+                b.purchase_invoice_number,
+                b.notes,
+                b.created_at,
+                b.updated_at
+        """
+        
+        if include_product_details:
+            query += """,
+                p.product_name,
+                p.product_code,
+                p.category,
+                p.manufacturer,
+                s.supplier_name
+            FROM batches b
+            LEFT JOIN products p ON b.product_id = p.product_id
+            LEFT JOIN suppliers s ON b.supplier_id = s.supplier_id
+            WHERE b.org_id = :org_id
+            """
+        else:
+            query += """
+            FROM batches b
+            WHERE b.org_id = :org_id
+            """
+        
+        params = {"org_id": org_id}
+        
+        if product_id:
+            query += " AND b.product_id = :product_id"
+            params["product_id"] = product_id
+            
+        # Only show active batches by default
+        query += " AND b.batch_status = 'active'"
+        
+        # Order by expiry date
+        query += " ORDER BY b.expiry_date ASC"
+        
+        # Add pagination
+        query += " LIMIT :limit OFFSET :skip"
+        params.update({"limit": limit, "skip": skip})
+        
+        result = db.execute(text(query), params)
+        batches = []
+        
+        for row in result:
+            batch_data = dict(row._mapping)
+            
+            # Calculate days to expiry
+            if batch_data.get("expiry_date"):
+                days_to_expiry = (batch_data["expiry_date"] - datetime.now().date()).days
+                batch_data["days_to_expiry"] = days_to_expiry
+                batch_data["is_expiring_soon"] = 0 < days_to_expiry <= 90
+                batch_data["is_expired"] = days_to_expiry < 0
+            else:
+                batch_data["days_to_expiry"] = None
+                batch_data["is_expiring_soon"] = False
+                batch_data["is_expired"] = False
+                
+            batches.append(batch_data)
+            
+        return batches
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get batches: {str(e)}"
+        )
+
+@router.post("/adjustments")
+async def create_stock_adjustment(
+    adjustment_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Create stock adjustment for damage, loss, or corrections
+    """
+    org_id = DEFAULT_ORG_ID
+    
+    try:
+        # Validate adjustment data
+        adjustment_type = adjustment_data.get("adjustment_type")
+        reason = adjustment_data.get("reason")
+        notes = adjustment_data.get("notes", "")
+        adjustment_date = adjustment_data.get("adjustment_date", datetime.now().isoformat())
+        items = adjustment_data.get("items", [])
+        
+        if not adjustment_type or not reason or not items:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required fields: adjustment_type, reason, or items"
+            )
+        
+        # Process each item
+        results = []
+        for item in items:
+            product_id = item.get("product_id")
+            quantity = item.get("quantity", 0)
+            batch_number = item.get("batch_number")
+            
+            if not product_id or quantity == 0:
+                continue
+                
+            # Get product info
+            product = db.execute(text("""
+                SELECT product_id, product_name, product_code
+                FROM products
+                WHERE product_id = :product_id AND org_id = :org_id
+            """), {
+                "product_id": product_id,
+                "org_id": org_id
+            }).first()
+            
+            if not product:
+                continue
+            
+            # Create stock movement record
+            movement_type = "adjustment_in" if adjustment_type == "increase" else "adjustment_out"
+            
+            # If specific batch is mentioned, update that batch
+            if batch_number:
+                batch = db.execute(text("""
+                    SELECT batch_id, quantity_available
+                    FROM batches
+                    WHERE batch_number = :batch_number 
+                    AND product_id = :product_id
+                    AND org_id = :org_id
+                """), {
+                    "batch_number": batch_number,
+                    "product_id": product_id,
+                    "org_id": org_id
+                }).first()
+                
+                if batch:
+                    new_quantity = batch.quantity_available + quantity
+                    if new_quantity < 0:
+                        new_quantity = 0
+                        
+                    db.execute(text("""
+                        UPDATE batches
+                        SET quantity_available = :new_quantity,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE batch_id = :batch_id
+                    """), {
+                        "new_quantity": new_quantity,
+                        "batch_id": batch.batch_id
+                    })
+            else:
+                # Adjust the oldest batch first
+                if adjustment_type == "decrease":
+                    # For decrease, deduct from available batches FIFO
+                    remaining_qty = abs(quantity)
+                    batches = db.execute(text("""
+                        SELECT batch_id, quantity_available
+                        FROM batches
+                        WHERE product_id = :product_id 
+                        AND org_id = :org_id
+                        AND quantity_available > 0
+                        ORDER BY expiry_date ASC
+                    """), {
+                        "product_id": product_id,
+                        "org_id": org_id
+                    }).fetchall()
+                    
+                    for batch in batches:
+                        if remaining_qty <= 0:
+                            break
+                            
+                        deduct_qty = min(batch.quantity_available, remaining_qty)
+                        new_qty = batch.quantity_available - deduct_qty
+                        
+                        db.execute(text("""
+                            UPDATE batches
+                            SET quantity_available = :new_qty,
+                                quantity_damaged = quantity_damaged + :deduct_qty,
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE batch_id = :batch_id
+                        """), {
+                            "new_qty": new_qty,
+                            "deduct_qty": deduct_qty if reason in ['damage', 'expiry'] else 0,
+                            "batch_id": batch.batch_id
+                        })
+                        
+                        remaining_qty -= deduct_qty
+                else:
+                    # For increase, add to the latest batch or create new
+                    latest_batch = db.execute(text("""
+                        SELECT batch_id, batch_number
+                        FROM batches
+                        WHERE product_id = :product_id 
+                        AND org_id = :org_id
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    """), {
+                        "product_id": product_id,
+                        "org_id": org_id
+                    }).first()
+                    
+                    if latest_batch:
+                        db.execute(text("""
+                            UPDATE batches
+                            SET quantity_available = quantity_available + :quantity,
+                                quantity_received = quantity_received + :quantity,
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE batch_id = :batch_id
+                        """), {
+                            "quantity": quantity,
+                            "batch_id": latest_batch.batch_id
+                        })
+                    else:
+                        # Create new batch
+                        batch_number = f"ADJ-{datetime.now().strftime('%Y%m%d')}-{product_id}"
+                        db.execute(text("""
+                            INSERT INTO batches (
+                                org_id, product_id, batch_number,
+                                expiry_date, quantity_received, quantity_available,
+                                batch_status, notes, created_at, updated_at
+                            ) VALUES (
+                                :org_id, :product_id, :batch_number,
+                                :expiry_date, :quantity, :quantity,
+                                'active', :notes, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                            )
+                        """), {
+                            "org_id": org_id,
+                            "product_id": product_id,
+                            "batch_number": batch_number,
+                            "expiry_date": (datetime.now() + timedelta(days=730)).date(),
+                            "quantity": quantity,
+                            "notes": f"Stock adjustment: {reason}"
+                        })
+            
+            results.append({
+                "product_id": product_id,
+                "product_name": product.product_name,
+                "quantity_adjusted": quantity,
+                "reason": reason,
+                "status": "completed"
+            })
+        
+        db.commit()
+        
+        return {
+            "adjustment_type": adjustment_type,
+            "reason": reason,
+            "items_adjusted": len(results),
+            "adjustment_date": adjustment_date,
+            "details": results
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create adjustment: {str(e)}"
+        )

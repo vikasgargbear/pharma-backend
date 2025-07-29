@@ -13,7 +13,6 @@ from .suppliers import router as suppliers_router
 from .purchases import router as purchases_router
 from .delivery_challan import router as delivery_challan_router
 from .dashboard import router as dashboard_router
-from .sales_returns import router as sales_returns_router
 from .stock_adjustments import router as stock_adjustments_router
 from .tax_entries import router as tax_entries_router
 from .purchase_upload import router as purchase_upload_router
