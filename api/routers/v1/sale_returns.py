@@ -319,23 +319,23 @@ async def create_sale_return(
                 text("""
                     INSERT INTO sale_return_items (
                         return_id, product_id,
-                        original_sale_item_id, quantity, rate,
+                        batch_id, quantity, rate,
                         tax_percent, tax_amount, total_amount
                     ) VALUES (
                         :return_id, :product_id,
-                        :original_item_id, :quantity, :rate,
-                        :tax_percent, :tax_amount, :total
+                        :batch_id, :quantity, :rate,
+                        :tax_percent, :tax_amount, :total_amount
                     )
                 """),
                 {
                     "return_id": return_id,
                     "product_id": item["product_id"],
-                    "original_item_id": item.get("original_sale_item_id"),
+                    "batch_id": item.get("batch_id"),
                     "quantity": item["quantity"],
                     "rate": Decimal(str(item["rate"])),
                     "tax_percent": Decimal(str(item.get("tax_percent", 0))),
-                    "tax_amount": Decimal(str(item.get("tax_amount", 0))),
-                    "total": Decimal(str(item.get("total_amount", 0)))
+                    "tax_amount": Decimal(str(item["quantity"])) * Decimal(str(item["rate"])) * Decimal(str(item.get("tax_percent", 0))) / 100,
+                    "total_amount": Decimal(str(item["quantity"])) * Decimal(str(item["rate"])) * (1 + Decimal(str(item.get("tax_percent", 0))) / 100)
                 }
             )
             
