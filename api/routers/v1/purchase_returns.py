@@ -154,6 +154,32 @@ async def get_returnable_purchases(
         logger.error(f"Error fetching returnable purchases: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/test-purchases/")
+async def test_purchases(db: Session = Depends(get_db)):
+    """Test endpoint to check purchases in database"""
+    try:
+        # Count total purchases
+        total = db.execute(text("SELECT COUNT(*) FROM purchases")).scalar()
+        
+        # Get sample purchases
+        samples = db.execute(
+            text("""
+                SELECT p.purchase_id, p.supplier_id, p.purchase_status, 
+                       p.supplier_invoice_number, s.supplier_name
+                FROM purchases p
+                LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
+                LIMIT 5
+            """)
+        ).fetchall()
+        
+        return {
+            "total_purchases": total,
+            "sample_purchases": [dict(s._mapping) for s in samples]
+        }
+    except Exception as e:
+        logger.error(f"Error in test endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/purchase/{purchase_id}/items")
 async def get_purchase_items_for_return(
     purchase_id: str,
