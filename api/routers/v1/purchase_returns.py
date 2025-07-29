@@ -78,6 +78,7 @@ async def get_returnable_purchases(
     Get purchase bills that can be returned
     """
     try:
+        logger.info(f"Getting returnable purchases for supplier_id: {supplier_id}, invoice: {invoice_number}")
         query = """
             SELECT 
                 p.purchase_id,
@@ -111,6 +112,8 @@ async def get_returnable_purchases(
         """
         
         purchases = db.execute(text(query), params).fetchall()
+        
+        logger.info(f"Found {len(purchases)} returnable purchases")
         
         result = []
         for purchase in purchases:
