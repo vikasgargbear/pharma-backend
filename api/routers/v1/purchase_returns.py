@@ -92,9 +92,15 @@ async def get_returnable_purchases(
             FROM purchases p
             LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
             LEFT JOIN purchase_items pi ON p.purchase_id = pi.purchase_id
-            WHERE p.purchase_status IN ('received', 'completed', 'paid')
+            WHERE 1=1
         """
         params = {}
+        
+        # Log all purchase statuses to debug
+        status_check = db.execute(
+            text("SELECT DISTINCT purchase_status FROM purchases LIMIT 10")
+        ).fetchall()
+        logger.info(f"Available purchase statuses: {[s.purchase_status for s in status_check]}")
         
         if supplier_id:
             query += " AND p.supplier_id = :supplier_id"
@@ -114,6 +120,14 @@ async def get_returnable_purchases(
         purchases = db.execute(text(query), params).fetchall()
         
         logger.info(f"Found {len(purchases)} returnable purchases")
+        
+        # If no purchases found, check if we have any purchases at all
+        if not purchases and supplier_id:
+            total_count = db.execute(
+                text("SELECT COUNT(*) FROM purchases WHERE supplier_id = :supplier_id"),
+                {"supplier_id": supplier_id}
+            ).scalar()
+            logger.info(f"Total purchases for supplier {supplier_id}: {total_count}")
         
         result = []
         for purchase in purchases:
