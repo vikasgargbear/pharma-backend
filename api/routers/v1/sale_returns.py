@@ -342,12 +342,12 @@ async def create_sale_return(
                 }
             )
             
-            # Update inventory (increase stock)
+            # Update batch stock (increase stock for returns)
             if item.get("batch_id"):
                 db.execute(
                     text("""
-                        UPDATE inventory 
-                        SET current_stock = current_stock + :quantity
+                        UPDATE batches 
+                        SET quantity = quantity + :quantity
                         WHERE batch_id = :batch_id
                     """),
                     {
@@ -355,28 +355,7 @@ async def create_sale_return(
                         "batch_id": item["batch_id"]
                     }
                 )
-            else:
-                # Find or create inventory entry
-                db.execute(
-                    text("""
-                        INSERT INTO inventory (
-                            inventory_id, org_id, product_id,
-                            batch_number, current_stock
-                        ) VALUES (
-                            :inv_id, :org_id, :product_id,
-                            :batch, :stock
-                        )
-                        ON CONFLICT (org_id, product_id, batch_number) 
-                        DO UPDATE SET current_stock = inventory.current_stock + :stock
-                    """),
-                    {
-                        "inv_id": str(uuid.uuid4()),
-                        "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                        "product_id": item["product_id"],
-                        "batch": item.get("batch_number", "DEFAULT"),
-                        "stock": item["quantity"]
-                    }
-                )
+            # Note: If no batch_id, we skip stock update as we can't track non-batch items
                 
         # Update party ledger based on credit adjustment type
         credit_adjustment_type = return_data.get("credit_adjustment_type", "future")
@@ -573,19 +552,20 @@ async def cancel_sale_return(
             {"return_id": return_id}
         ).fetchall()
         
-        # Reverse inventory changes
+        # Reverse batch stock changes
         for item in items:
-            db.execute(
-                text("""
-                    UPDATE inventory 
-                    SET current_stock = current_stock - :quantity
-                    WHERE product_id = :product_id
-                """),
-                {
-                    "quantity": item.quantity,
-                    "product_id": item.product_id
-                }
-            )
+            if item.batch_id:
+                db.execute(
+                    text("""
+                        UPDATE batches 
+                        SET quantity = quantity - :quantity
+                        WHERE batch_id = :batch_id
+                    """),
+                    {
+                        "quantity": item.return_quantity,
+                        "batch_id": item.batch_id
+                    }
+                )
             
         # Reverse ledger entry if credit return
         if sale_return.payment_mode == "credit":
