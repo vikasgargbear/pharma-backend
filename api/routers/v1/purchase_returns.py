@@ -1,6 +1,7 @@
 """
 Purchase Return API Router
 Handles returns of purchased items back to suppliers
+Matches the structure of sales returns for consistency
 """
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -31,11 +32,12 @@ async def get_purchase_returns(
     """
     try:
         query = """
-            SELECT pr.*, s.supplier_name, p.supplier_invoice_number as original_invoice
-            FROM purchase_returns pr
+            SELECT pr.*, s.supplier_name as party_name, 
+                   -- Extract invoice ID from return number
+                   SUBSTRING(pr.return_number FROM 'INV([0-9]+)$') as original_invoice_number
+            FROM return_requests pr
             LEFT JOIN suppliers s ON pr.supplier_id = s.supplier_id
-            LEFT JOIN purchases p ON pr.original_purchase_id = p.purchase_id
-            WHERE 1=1
+            WHERE pr.return_type = 'PURCHASE'
         """
         params = {"skip": skip, "limit": limit}
         
@@ -51,48 +53,22 @@ async def get_purchase_returns(
             query += " AND pr.return_date <= :to_date"
             params["to_date"] = to_date
             
-        query += " ORDER BY pr.return_date DESC, pr.created_at DESC LIMIT :limit OFFSET :skip"
+        query += " ORDER BY pr.created_at DESC LIMIT :limit OFFSET :skip"
         
         returns = db.execute(text(query), params).fetchall()
         
-        # Get items for each return
-        result = []
-        for ret in returns:
-            items_query = """
-                SELECT pri.*, p.product_name, p.hsn_code
-                FROM purchase_return_items pri
-                LEFT JOIN products p ON pri.product_id = p.product_id
-                WHERE pri.return_id = :return_id
-            """
-            items = db.execute(text(items_query), {"return_id": ret.return_id}).fetchall()
-            
-            return_dict = dict(ret._mapping)
-            return_dict["items"] = [dict(item._mapping) for item in items]
-            result.append(return_dict)
-            
-        # Get total count
-        count_query = """
-            SELECT COUNT(*) FROM purchase_returns pr WHERE 1=1
-        """
-        if supplier_id:
-            count_query += " AND pr.supplier_id = :supplier_id"
-        if from_date:
-            count_query += " AND pr.return_date >= :from_date"
-        if to_date:
-            count_query += " AND pr.return_date <= :to_date"
-            
-        total = db.execute(text(count_query), params).scalar()
-        
         return {
-            "total": total,
-            "returns": result
+            "data": [dict(r._mapping) for r in returns],
+            "total": len(returns),
+            "skip": skip,
+            "limit": limit
         }
         
     except Exception as e:
         logger.error(f"Error fetching purchase returns: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/returnable-purchases")
+@router.get("/returnable-purchases/")
 async def get_returnable_purchases(
     supplier_id: Optional[str] = None,
     invoice_number: Optional[str] = None,
@@ -105,18 +81,17 @@ async def get_returnable_purchases(
         query = """
             SELECT 
                 p.purchase_id,
-                p.purchase_number,
-                p.supplier_invoice_number,
-                p.purchase_date,
-                p.supplier_invoice_date,
+                p.supplier_invoice_number as invoice_number,
+                p.supplier_invoice_date as invoice_date,
                 p.supplier_id,
                 s.supplier_name,
-                p.final_amount,
+                s.gst_number as supplier_gst,
+                p.final_amount as total_amount,
                 COUNT(pi.purchase_item_id) as total_items
             FROM purchases p
             LEFT JOIN suppliers s ON p.supplier_id = s.supplier_id
             LEFT JOIN purchase_items pi ON p.purchase_id = pi.purchase_id
-            WHERE p.purchase_status IN ('received', 'completed')
+            WHERE p.purchase_status IN ('received', 'completed', 'paid')
         """
         params = {}
         
@@ -125,14 +100,13 @@ async def get_returnable_purchases(
             params["supplier_id"] = supplier_id
             
         if invoice_number:
-            query += " AND (p.supplier_invoice_number LIKE :invoice OR p.purchase_number LIKE :invoice)"
+            query += " AND p.supplier_invoice_number LIKE :invoice"
             params["invoice"] = f"%{invoice_number}%"
             
         query += """ 
-            GROUP BY p.purchase_id, p.purchase_number, p.supplier_invoice_number,
-                     p.purchase_date, p.supplier_invoice_date, p.supplier_id, 
-                     s.supplier_name, p.final_amount
-            ORDER BY p.purchase_date DESC
+            GROUP BY p.purchase_id, p.supplier_invoice_number, p.supplier_invoice_date,
+                     p.supplier_id, s.supplier_name, s.gst_number, p.final_amount
+            ORDER BY p.supplier_invoice_date DESC
             LIMIT 50
         """
         
@@ -142,15 +116,15 @@ async def get_returnable_purchases(
         for purchase in purchases:
             # Check how much has already been returned
             returned_query = """
-                SELECT COALESCE(SUM(pri.quantity), 0) as total_returned
-                FROM purchase_returns pr
-                JOIN purchase_return_items pri ON pr.return_id = pri.return_id
-                WHERE pr.original_purchase_id = :purchase_id
+                SELECT COALESCE(SUM(ri.return_quantity), 0) as total_returned
+                FROM return_requests rr
+                JOIN return_items ri ON rr.return_id = ri.return_id
+                WHERE rr.return_number LIKE :invoice_pattern AND rr.return_type = 'PURCHASE'
             """
             total_returned = db.execute(
                 text(returned_query), 
-                {"purchase_id": purchase.purchase_id}
-            ).scalar()
+                {"invoice_pattern": f"%-INV{purchase.purchase_id}"}
+            ).scalar() or 0
             
             purchase_dict = dict(purchase._mapping)
             purchase_dict["has_returns"] = total_returned > 0
@@ -182,30 +156,51 @@ async def get_purchase_items_for_return(
             raise HTTPException(status_code=404, detail="Purchase not found")
             
         # Get items with return info
+        # Note: Purchase items don't have batch_id directly, batches are created during GRN
+        # For simplicity, we'll get available batches for each product from the purchase
         items_query = """
             SELECT 
                 pi.*,
                 p.product_name,
                 p.hsn_code,
-                COALESCE(SUM(pri.quantity), 0) as returned_quantity
+                NULL as batch_number,
+                NULL as expiry_date,
+                COALESCE(returned_qty.total_returned, 0) as returned_quantity
             FROM purchase_items pi
             LEFT JOIN products p ON pi.product_id = p.product_id
-            LEFT JOIN purchase_return_items pri ON (
-                pri.original_purchase_item_id = pi.purchase_item_id
-            )
+            LEFT JOIN (
+                SELECT 
+                    rr.return_number,
+                    ri.product_id,
+                    SUM(ri.return_quantity) as total_returned
+                FROM return_items ri
+                JOIN return_requests rr ON ri.return_id = rr.return_id  
+                WHERE rr.return_number LIKE :invoice_pattern AND rr.return_type = 'PURCHASE'
+                GROUP BY rr.return_number, ri.product_id
+            ) returned_qty ON returned_qty.product_id = pi.product_id
             WHERE pi.purchase_id = :purchase_id
-            GROUP BY pi.purchase_item_id, p.product_name, p.hsn_code
+            GROUP BY pi.purchase_item_id, pi.product_id, pi.ordered_quantity, pi.received_quantity, 
+                     pi.cost_price, p.product_name, p.hsn_code, returned_qty.total_returned
         """
         
-        items = db.execute(text(items_query), {"purchase_id": purchase_id}).fetchall()
+        items = db.execute(
+            text(items_query), 
+            {"purchase_id": purchase_id, "invoice_pattern": f"%-INV{purchase_id}"}
+        ).fetchall()
         
         result_items = []
         for item in items:
             item_dict = dict(item._mapping)
-            # Use received_quantity if available, otherwise ordered_quantity
-            actual_qty = item.received_quantity if item.received_quantity else item.ordered_quantity
-            item_dict["returnable_quantity"] = actual_qty - item.returned_quantity
+            # Use received_quantity as the base quantity for returns
+            quantity = item.received_quantity or item.ordered_quantity
+            returned_quantity = item.returned_quantity or 0
+            item_dict["quantity"] = quantity
+            item_dict["returnable_quantity"] = quantity - returned_quantity
             item_dict["can_return"] = item_dict["returnable_quantity"] > 0
+            # Add some default values for compatibility
+            item_dict["batch_id"] = None
+            item_dict["rate"] = item.cost_price
+            item_dict["tax_percent"] = 18  # Default GST rate
             result_items.append(item_dict)
             
         return {
@@ -213,8 +208,6 @@ async def get_purchase_items_for_return(
             "items": result_items
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error fetching purchase items: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -225,334 +218,211 @@ async def create_purchase_return(
     db: Session = Depends(get_db)
 ):
     """
-    Create a new purchase return and generate debit note if supplier has GST
+    Create a new purchase return (RTV - Return to Vendor)
     """
     try:
         # Validate required fields
-        required_fields = ["original_purchase_id", "supplier_id", "return_date", "items"]
-        for field in required_fields:
-            if field not in return_data:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Missing required field: {field}"
-                )
-                
-        if not return_data["items"]:
+        if not return_data.get("items") or not any(item.get("selected") and item.get("quantity", 0) > 0 for item in return_data.get("items", [])):
             raise HTTPException(
                 status_code=400,
                 detail="At least one item must be returned"
             )
             
+        # Generate return number with invoice reference
+        purchase_id = return_data.get("purchase_id", "")
+        return_number = f"PR-{datetime.now().strftime('%Y%m%d-%H%M%S')}-INV{purchase_id}"
+        
         # Get supplier details to check for GST
         supplier = db.execute(
             text("""
-                SELECT supplier_id, supplier_name, gst_number
-                FROM suppliers
+                SELECT * FROM suppliers 
                 WHERE supplier_id = :supplier_id
             """),
-            {"supplier_id": return_data["supplier_id"]}
+            {"supplier_id": return_data.get("supplier_id")}
         ).fetchone()
         
         if not supplier:
             raise HTTPException(status_code=404, detail="Supplier not found")
-            
-        # Generate return number
-        return_number = f"PR-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        
-        # Generate debit note number only if supplier has GST
-        debit_note_number = None
-        if supplier.gst_number:
-            debit_note_number = f"DN-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        
-        return_id = str(uuid.uuid4())
         
         # Calculate totals
         subtotal = Decimal("0")
         tax_amount = Decimal("0")
         total_amount = Decimal("0")
         
-        for item in return_data["items"]:
+        selected_items = [item for item in return_data.get("items", []) if item.get("selected") and item.get("quantity", 0) > 0]
+        
+        for item in selected_items:
             item_total = Decimal(str(item["quantity"])) * Decimal(str(item["rate"]))
-            item_tax = item_total * Decimal(str(item.get("tax_percent", 0))) / 100
-            
+            item_tax = (item_total * Decimal(str(item.get("tax_percent", 18)))) / 100
             subtotal += item_total
             tax_amount += item_tax
             total_amount += item_total + item_tax
             
-        # Create return record
-        db.execute(
+        # Generate debit note number only for GST suppliers
+        debit_note_no = None
+        if supplier.gst_number:
+            # Get next debit note number
+            last_dn = db.execute(
+                text("""
+                    SELECT debit_note_number FROM return_requests 
+                    WHERE return_type = 'PURCHASE' AND debit_note_number IS NOT NULL
+                    ORDER BY created_at DESC LIMIT 1
+                """)
+            ).scalar()
+            
+            if last_dn and last_dn.startswith('DN-'):
+                try:
+                    last_num = int(last_dn.split('-')[1])
+                    debit_note_no = f"DN-{last_num + 1:06d}"
+                except:
+                    debit_note_no = "DN-000001"
+            else:
+                debit_note_no = "DN-000001"
+        
+        # Create return record using return_requests table
+        # Note: purchase_id can be NULL for direct invoice returns
+        result = db.execute(
             text("""
-                INSERT INTO purchase_returns (
-                    return_id, org_id, return_number, debit_note_number,
-                    return_date, original_purchase_id, supplier_id, 
-                    reason, subtotal_amount, tax_amount, total_amount,
-                    return_status
+                INSERT INTO return_requests (
+                    org_id, return_number, return_date,
+                    return_type, purchase_id, supplier_id,
+                    return_reason, return_status,
+                    total_return_amount, debit_note_number
                 ) VALUES (
-                    :return_id, :org_id, :return_number, :debit_note_number,
-                    :return_date, :original_purchase_id, :supplier_id,
-                    :reason, :subtotal, :tax_amount, :total_amount,
-                    'completed'
+                    :org_id, :return_number, :return_date,
+                    'PURCHASE', NULL, :supplier_id,
+                    :reason, 'approved',
+                    :total_amount, :debit_note_no
                 )
+                RETURNING return_id
             """),
             {
-                "return_id": return_id,
                 "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",  # Default org
                 "return_number": return_number,
-                "debit_note_number": debit_note_number,
                 "return_date": return_data["return_date"],
-                "original_purchase_id": return_data["original_purchase_id"],
-                "supplier_id": return_data["supplier_id"],
+                "supplier_id": return_data.get("supplier_id"),
                 "reason": return_data.get("return_reason", return_data.get("reason", "")),
-                "subtotal": subtotal,
-                "tax_amount": tax_amount,
-                "total_amount": total_amount
+                "total_amount": total_amount,
+                "debit_note_no": debit_note_no
             }
-        )
+        ).fetchone()
+        
+        return_id = result.return_id
         
         # Create return items and update inventory
-        for item in return_data["items"]:
-            # Insert return item
+        for item in selected_items:
+            # Insert return item using existing return_items table
             db.execute(
                 text("""
-                    INSERT INTO purchase_return_items (
-                        return_item_id, return_id, product_id,
-                        original_purchase_item_id, quantity, rate,
-                        tax_percent, tax_amount, total_amount
+                    INSERT INTO return_items (
+                        return_id, product_id,
+                        batch_id, return_quantity, 
+                        original_price, return_price
                     ) VALUES (
-                        :item_id, :return_id, :product_id,
-                        :original_item_id, :quantity, :rate,
-                        :tax_percent, :tax_amount, :total
+                        :return_id, :product_id,
+                        :batch_id, :quantity, 
+                        :rate, :rate
                     )
                 """),
                 {
-                    "item_id": str(uuid.uuid4()),
                     "return_id": return_id,
                     "product_id": item["product_id"],
-                    "original_item_id": item.get("original_purchase_item_id"),
+                    "batch_id": item.get("batch_id"),
                     "quantity": item["quantity"],
-                    "rate": Decimal(str(item["rate"])),
-                    "tax_percent": Decimal(str(item.get("tax_percent", 0))),
-                    "tax_amount": Decimal(str(item.get("tax_amount", 0))),
-                    "total": Decimal(str(item.get("total_amount", 0)))
+                    "rate": Decimal(str(item["rate"]))
                 }
             )
             
-            # Update inventory (decrease stock)
-            if item.get("batch_number"):
+            # Update batch stock (decrease stock for returns to supplier)
+            if item.get("batch_id"):
                 db.execute(
                     text("""
-                        UPDATE inventory 
-                        SET current_stock = current_stock - :quantity
-                        WHERE org_id = :org_id 
-                        AND product_id = :product_id 
-                        AND batch_number = :batch
+                        UPDATE batches 
+                        SET quantity_available = quantity_available - :quantity,
+                            quantity_returned = quantity_returned + :quantity
+                        WHERE batch_id = :batch_id
                     """),
                     {
                         "quantity": item["quantity"],
-                        "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                        "product_id": item["product_id"],
-                        "batch": item["batch_number"]
+                        "batch_id": item["batch_id"]
                     }
                 )
+            # Note: If no batch_id, we skip stock update as we can't track non-batch items
                 
-        # Update supplier ledger (debit entry)
-        db.execute(
-            text("""
-                INSERT INTO supplier_ledger (
-                    ledger_id, org_id, supplier_id, transaction_date,
-                    transaction_type, reference_type, reference_id,
-                    debit_amount, credit_amount, description
-                ) VALUES (
-                    :ledger_id, :org_id, :supplier_id, :date,
-                    'debit', 'purchase_return', :return_id,
-                    :amount, 0, :description
-                )
-            """),
-            {
-                "ledger_id": str(uuid.uuid4()),
-                "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                "supplier_id": return_data["supplier_id"],
-                "date": return_data["return_date"],
-                "return_id": return_id,
-                "amount": total_amount,
-                "description": f"Purchase Return - {debit_note_number}"
-            }
-        )
-        
+        # TODO: Update party ledger when table is available
+        # For now, we'll skip ledger updates
+            
         db.commit()
         
         return {
             "status": "success",
             "return_id": return_id,
             "return_number": return_number,
-            "debit_note_number": debit_note_number,
-            "total_amount": float(total_amount),
+            "debit_note_no": debit_note_no,
             "has_gst": bool(supplier.gst_number),
-            "message": f"Purchase return {return_number} created successfully" + (f" with debit note {debit_note_number}" if debit_note_number else " (No debit note - supplier does not have GST)")
+            "subtotal": float(subtotal),
+            "tax_amount": float(tax_amount),
+            "total_amount": float(total_amount),
+            "message": f"Purchase return created successfully{' with GST Debit Note: ' + debit_note_no if debit_note_no else ''}"
         }
         
     except HTTPException:
-        db.rollback()
         raise
     except Exception as e:
-        db.rollback()
         logger.error(f"Error creating purchase return: {e}")
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{return_id}")
-async def get_purchase_return_detail(
-    return_id: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Get detailed information about a specific purchase return
-    """
-    try:
-        # Get return details
-        return_query = """
-            SELECT pr.*, s.supplier_name, s.gst_number as supplier_gst,
-                   p.supplier_invoice_number as original_invoice
-            FROM purchase_returns pr
-            LEFT JOIN suppliers s ON pr.supplier_id = s.supplier_id
-            LEFT JOIN purchases p ON pr.original_purchase_id = p.purchase_id
-            WHERE pr.return_id = :return_id
-        """
-        
-        purchase_return = db.execute(
-            text(return_query), 
-            {"return_id": return_id}
-        ).first()
-        
-        if not purchase_return:
-            raise HTTPException(status_code=404, detail="Purchase return not found")
-            
-        # Get return items
-        items_query = """
-            SELECT pri.*, p.product_name, p.hsn_code,
-                   pi.batch_number, pi.expiry_date
-            FROM purchase_return_items pri
-            LEFT JOIN products p ON pri.product_id = p.product_id
-            LEFT JOIN purchase_items pi ON pri.original_purchase_item_id = pi.purchase_item_id
-            WHERE pri.return_id = :return_id
-        """
-        
-        items = db.execute(
-            text(items_query), 
-            {"return_id": return_id}
-        ).fetchall()
-        
-        result = dict(purchase_return._mapping)
-        result["items"] = [dict(item._mapping) for item in items]
-        
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching purchase return detail: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/{return_id}/print")
-async def get_purchase_return_print_data(
-    return_id: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Get purchase return data formatted for printing debit note
-    """
-    try:
-        # Get organization details
-        org_query = """
-            SELECT * FROM organizations 
-            WHERE org_id = '12de5e22-eee7-4d25-b3a7-d16d01c6170f'
-        """
-        organization = db.execute(text(org_query)).first()
-        
-        # Get return with all details
-        return_data = await get_purchase_return_detail(return_id, db)
-        
-        # Format for printing
-        print_data = {
-            "organization": dict(organization._mapping) if organization else {},
-            "return": return_data,
-            "print_date": datetime.now().isoformat(),
-            "document_type": "DEBIT NOTE"
-        }
-        
-        return print_data
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting print data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/{return_id}")
+@router.post("/{return_id}/cancel")
 async def cancel_purchase_return(
-    return_id: str,
+    return_id: int,
     db: Session = Depends(get_db)
 ):
     """
     Cancel a purchase return
     """
     try:
-        # Check if return exists
+        # Get return details
         purchase_return = db.execute(
-            text("SELECT * FROM purchase_returns WHERE return_id = :return_id"),
+            text("SELECT * FROM return_requests WHERE return_id = :return_id AND return_type = 'PURCHASE'"),
             {"return_id": return_id}
-        ).first()
+        ).fetchone()
         
         if not purchase_return:
-            raise HTTPException(status_code=404, detail="Purchase return not found")
+            raise HTTPException(status_code=404, detail="Return not found")
             
         if purchase_return.return_status == "cancelled":
             raise HTTPException(status_code=400, detail="Return already cancelled")
             
-        # Get return items to reverse inventory
+        # Get return items
         items = db.execute(
-            text("""
-                SELECT pri.*, pi.batch_number 
-                FROM purchase_return_items pri
-                LEFT JOIN purchase_items pi ON pri.original_purchase_item_id = pi.purchase_item_id
-                WHERE pri.return_id = :return_id
-            """),
+            text("SELECT * FROM return_items WHERE return_id = :return_id"),
             {"return_id": return_id}
         ).fetchall()
         
-        # Reverse inventory changes
+        # Reverse batch stock changes
         for item in items:
-            db.execute(
-                text("""
-                    UPDATE inventory 
-                    SET current_stock = current_stock + :quantity
-                    WHERE org_id = :org_id 
-                    AND product_id = :product_id
-                    AND batch_number = :batch
-                """),
-                {
-                    "quantity": item.quantity,
-                    "org_id": "12de5e22-eee7-4d25-b3a7-d16d01c6170f",
-                    "product_id": item.product_id,
-                    "batch": item.batch_number or "DEFAULT"
-                }
-            )
+            if item.batch_id:
+                db.execute(
+                    text("""
+                        UPDATE batches 
+                        SET quantity_available = quantity_available + :quantity,
+                            quantity_returned = quantity_returned - :quantity
+                        WHERE batch_id = :batch_id
+                    """),
+                    {
+                        "quantity": item.return_quantity,
+                        "batch_id": item.batch_id
+                    }
+                )
             
-        # Reverse ledger entry
-        db.execute(
-            text("""
-                DELETE FROM supplier_ledger 
-                WHERE reference_type = 'purchase_return' 
-                AND reference_id = :return_id
-            """),
-            {"return_id": return_id}
-        )
-        
+        # TODO: Reverse ledger entry when party_ledger table is available
+            
         # Update return status
         db.execute(
             text("""
-                UPDATE purchase_returns 
-                SET return_status = 'cancelled',
-                    updated_at = CURRENT_TIMESTAMP
+                UPDATE return_requests 
+                SET return_status = 'cancelled'
                 WHERE return_id = :return_id
             """),
             {"return_id": return_id}
@@ -560,15 +430,62 @@ async def cancel_purchase_return(
         
         db.commit()
         
+        return {"status": "success", "message": "Purchase return cancelled successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling purchase return: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{return_id}")
+async def get_purchase_return_details(
+    return_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get details of a specific purchase return
+    """
+    try:
+        # Get return details
+        return_query = """
+            SELECT pr.*, s.supplier_name as party_name, s.gst_number as party_gst,
+                   -- Extract invoice ID from return number
+                   SUBSTRING(pr.return_number FROM 'INV([0-9]+)$') as original_invoice_number
+            FROM return_requests pr
+            LEFT JOIN suppliers s ON pr.supplier_id = s.supplier_id
+            WHERE pr.return_id = :return_id AND pr.return_type = 'PURCHASE'
+        """
+        
+        return_data = db.execute(text(return_query), {"return_id": return_id}).fetchone()
+        
+        if not return_data:
+            raise HTTPException(status_code=404, detail="Purchase return not found")
+            
+        # Get return items
+        items_query = """
+            SELECT 
+                ri.*,
+                p.product_name,
+                p.hsn_code,
+                b.batch_number,
+                b.expiry_date
+            FROM return_items ri
+            LEFT JOIN products p ON ri.product_id = p.product_id
+            LEFT JOIN batches b ON ri.batch_id = b.batch_id
+            WHERE ri.return_id = :return_id
+        """
+        
+        items = db.execute(text(items_query), {"return_id": return_id}).fetchall()
+        
         return {
-            "status": "success",
-            "message": f"Purchase return {purchase_return.return_number} cancelled successfully"
+            "return": dict(return_data._mapping),
+            "items": [dict(item._mapping) for item in items]
         }
         
     except HTTPException:
-        db.rollback()
         raise
     except Exception as e:
-        db.rollback()
-        logger.error(f"Error cancelling purchase return: {e}")
+        logger.error(f"Error fetching purchase return details: {e}")
         raise HTTPException(status_code=500, detail=str(e))
