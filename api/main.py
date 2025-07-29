@@ -44,10 +44,11 @@ from .routers.v1 import (
     customers_router, orders_router, inventory_router, billing_router, 
     payments_router, invoices_router, order_items_router, users_router,
     suppliers_router, purchases_router, delivery_challan_router, dashboard_router,
-    sales_returns_router, stock_adjustments_router, tax_entries_router,
+    stock_adjustments_router, tax_entries_router,
     purchase_upload_router, purchase_enhanced_router, sale_returns_api_router,
     purchase_returns_router, stock_movements_router, party_ledger_router,
-    credit_debit_notes_router, sales_router, enterprise_orders_router
+    credit_debit_notes_router, sales_router, enterprise_orders_router,
+    collection_center_router
 )
 from .routers.v1.org_users import router as org_users_router
 from .routers.v1.stock_receive import router as stock_receive_router
@@ -217,7 +218,6 @@ app.include_router(suppliers_router)
 app.include_router(purchases_router)
 app.include_router(delivery_challan_router)
 app.include_router(dashboard_router)
-app.include_router(sales_returns_router)
 app.include_router(stock_adjustments_router)
 app.include_router(tax_entries_router)
 app.include_router(purchase_upload_router)
@@ -240,6 +240,7 @@ app.include_router(organization_settings_router)  # 🚀 NEW: Organization setti
 app.include_router(auth_router)  # 🚀 NEW: JWT-based authentication with org context
 app.include_router(sales_orders_router)  # 🚀 NEW: Enterprise sales order management
 app.include_router(stock_writeoff_router)  # 🚀 NEW: Stock write-off with ITC reversal
+app.include_router(collection_center_router)  # 🚀 NEW: Collection center with click-based WhatsApp/SMS
 
 # Debug router (only in debug mode)
 if settings.DEBUG:

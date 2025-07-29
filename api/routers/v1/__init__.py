@@ -39,7 +39,6 @@ __all__ = [
     "purchases_router",
     "delivery_challan_router",
     "dashboard_router",
-    "sales_returns_router",
     "stock_adjustments_router",
     "tax_entries_router",
     "purchase_upload_router",
