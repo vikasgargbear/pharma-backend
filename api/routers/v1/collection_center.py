@@ -12,7 +12,7 @@ from decimal import Decimal
 import json
 
 from ...database import get_db
-from ...services.messaging import SMSService, WhatsAppService, EmailService
+# from ...services.messaging import SMSService, WhatsAppService, EmailService  # Commented out - using click-based approach
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +216,121 @@ async def get_outstanding_list(
         logger.error(f"Error fetching outstanding list: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/reminders/generate-links")
+async def generate_reminder_links(
+    reminder_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate clickable WhatsApp/SMS links for payment reminders
+    """
+    try:
+        import urllib.parse
+        
+        # Validate required fields
+        required_fields = ["party_type", "party_ids", "channel", "message"]
+        for field in required_fields:
+            if field not in reminder_data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+                
+        party_type = reminder_data["party_type"]
+        party_ids = reminder_data["party_ids"]
+        channel = reminder_data["channel"]  # 'sms', 'whatsapp'
+        message_template = reminder_data["message"]
+        
+        # Get party details and outstanding
+        if party_type == "customer":
+            party_query = """
+                SELECT 
+                    c.customer_id as party_id,
+                    c.customer_name as party_name,
+                    c.phone,
+                    c.email,
+                    SUM(o.outstanding_amount) as total_outstanding,
+                    COUNT(o.outstanding_id) as bill_count,
+                    MAX(o.days_overdue) as max_days_overdue,
+                    STRING_AGG(o.invoice_number, ', ') as invoice_numbers
+                FROM customers c
+                JOIN customer_outstanding o ON c.customer_id = o.customer_id
+                WHERE c.customer_id = ANY(:party_ids)
+                GROUP BY c.customer_id, c.customer_name, c.phone, c.email
+            """
+        else:  # supplier
+            party_query = """
+                SELECT 
+                    s.supplier_id as party_id,
+                    s.supplier_name as party_name,
+                    s.phone,
+                    s.email,
+                    SUM(o.outstanding_amount) as total_outstanding,
+                    COUNT(o.outstanding_id) as bill_count,
+                    MAX(o.days_overdue) as max_days_overdue,
+                    STRING_AGG(o.bill_number, ', ') as invoice_numbers
+                FROM suppliers s
+                JOIN supplier_outstanding o ON s.supplier_id = o.supplier_id
+                WHERE s.supplier_id = ANY(:party_ids)
+                GROUP BY s.supplier_id, s.supplier_name, s.phone, s.email
+            """
+            
+        parties = db.execute(
+            text(party_query),
+            {"party_ids": party_ids}
+        ).fetchall()
+        
+        links = []
+        
+        for party in parties:
+            # Prepare message with variables
+            message = message_template.replace("{{party_name}}", party.party_name)
+            message = message.replace("{{amount}}", f"₹{party.total_outstanding:.2f}")
+            message = message.replace("{{days_overdue}}", str(party.max_days_overdue))
+            message = message.replace("{{invoice_numbers}}", party.invoice_numbers or "")
+            message = message.replace("{{company_name}}", "AASO Pharmaceuticals")
+            
+            if not party.phone:
+                continue
+                
+            # Clean phone number (remove spaces, dashes)
+            phone = party.phone.replace(" ", "").replace("-", "")
+            if not phone.startswith("+"):
+                # Assume Indian number if no country code
+                if not phone.startswith("91"):
+                    phone = "91" + phone
+                phone = "+" + phone
+            
+            link = ""
+            if channel == "whatsapp":
+                # Generate WhatsApp link
+                encoded_message = urllib.parse.quote(message)
+                link = f"https://wa.me/{phone}?text={encoded_message}"
+            elif channel == "sms":
+                # Generate SMS link
+                encoded_message = urllib.parse.quote(message)
+                link = f"sms:{phone}?body={encoded_message}"
+                
+            links.append({
+                "party_id": party.party_id,
+                "party_name": party.party_name,
+                "phone": party.phone,
+                "outstanding_amount": float(party.total_outstanding),
+                "days_overdue": party.max_days_overdue,
+                "link": link,
+                "message": message
+            })
+            
+        return {
+            "status": "success",
+            "channel": channel,
+            "links": links,
+            "count": len(links)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating reminder links: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/reminders/send")
 async def send_reminders(
     reminder_data: dict,
@@ -223,7 +338,7 @@ async def send_reminders(
     db: Session = Depends(get_db)
 ):
     """
-    Send payment reminders via SMS/WhatsApp/Email
+    Send payment reminders via SMS/WhatsApp/Email (Deprecated - use generate-links instead)
     """
     try:
         # Validate required fields

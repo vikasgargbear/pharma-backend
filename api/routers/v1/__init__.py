@@ -25,7 +25,7 @@ from .party_ledger import router as party_ledger_router
 from .credit_debit_notes import router as credit_debit_notes_router
 from .sales import router as sales_router
 from .enterprise_orders import router as enterprise_orders_router
-from .collection_center import router as collection_center_router
+from .collection_center_simple import router as collection_center_router
 
 __all__ = [
     "customers_router", 
