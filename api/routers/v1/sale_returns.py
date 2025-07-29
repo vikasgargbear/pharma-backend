@@ -252,8 +252,9 @@ async def create_sale_return(
                 detail="At least one item must be returned"
             )
             
-        # Generate return number
-        return_number = f"SR-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        # Generate return number with invoice reference
+        invoice_id = return_data.get("invoice_id", "")
+        return_number = f"SR-{datetime.now().strftime('%Y%m%d-%H%M%S')}-INV{invoice_id}"
         
         # Get customer details to check for GST
         customer = db.execute(
@@ -325,13 +326,11 @@ async def create_sale_return(
                     INSERT INTO return_items (
                         return_id, product_id,
                         batch_id, return_quantity, 
-                        original_price, return_price,
-                        remarks
+                        original_price, return_price
                     ) VALUES (
                         :return_id, :product_id,
                         :batch_id, :quantity, 
-                        :rate, :rate,
-                        :remarks
+                        :rate, :rate
                     )
                 """),
                 {
@@ -339,8 +338,7 @@ async def create_sale_return(
                     "product_id": item["product_id"],
                     "batch_id": item.get("batch_id"),
                     "quantity": item["quantity"],
-                    "rate": Decimal(str(item["rate"])),
-                    "remarks": f"Invoice: {return_data.get('invoice_id', 'N/A')}"
+                    "rate": Decimal(str(item["rate"]))
                 }
             )
             
