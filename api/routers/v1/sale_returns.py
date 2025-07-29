@@ -60,7 +60,7 @@ async def get_sale_returns(
         for ret in returns:
             items_query = """
                 SELECT sri.*, p.product_name, p.hsn_code
-                FROM sale_return_items sri
+                FROM return_items sri
                 LEFT JOIN products p ON sri.product_id = p.product_id
                 WHERE sri.return_id = :return_id
             """
@@ -139,10 +139,10 @@ async def get_returnable_invoices(
         for inv in invoices:
             # Check how much has already been returned
             returned_query = """
-                SELECT COALESCE(SUM(sri.quantity), 0) as total_returned
-                FROM sale_returns sr
-                JOIN sale_return_items sri ON sr.return_id = sri.return_id
-                WHERE sr.original_invoice_id = :invoice_id
+                SELECT COALESCE(SUM(sri.return_quantity), 0) as total_returned
+                FROM sales_returns sr
+                JOIN return_items sri ON sr.return_id = sri.return_id
+                WHERE sr.original_sale_id = :invoice_id
             """
             total_returned = db.execute(
                 text(returned_query), 
@@ -184,12 +184,16 @@ async def get_invoice_items_for_return(
                 si.*,
                 p.product_name,
                 p.hsn_code,
-                COALESCE(SUM(sri.quantity), 0) as returned_quantity
+                COALESCE(SUM(sri.return_quantity), 0) as returned_quantity
             FROM invoice_items ii
             LEFT JOIN products p ON ii.product_id = p.product_id
-            LEFT JOIN sale_return_items sri ON (
-                sri.original_invoice_item_id = ii.item_id
-            )
+            LEFT JOIN (
+                SELECT r.product_id, r.batch_id, SUM(r.return_quantity) as return_quantity
+                FROM return_items r
+                JOIN sales_returns sr ON r.return_id = sr.return_id  
+                WHERE sr.original_sale_id = :invoice_id
+                GROUP BY r.product_id, r.batch_id
+            ) sri ON (sri.product_id = ii.product_id AND (sri.batch_id = ii.batch_id OR (sri.batch_id IS NULL AND ii.batch_id IS NULL)))
             WHERE ii.invoice_id = :invoice_id
             GROUP BY ii.item_id, p.product_name, p.hsn_code
         """
@@ -314,17 +318,17 @@ async def create_sale_return(
         
         # Create return items and update inventory
         for item in return_data["items"]:
-            # Insert return item
+            # Insert return item using existing return_items table
             db.execute(
                 text("""
-                    INSERT INTO sale_return_items (
+                    INSERT INTO return_items (
                         return_id, product_id,
-                        batch_id, quantity, rate,
-                        tax_percent, tax_amount, total_amount
+                        batch_id, return_quantity, 
+                        original_price, return_price
                     ) VALUES (
                         :return_id, :product_id,
-                        :batch_id, :quantity, :rate,
-                        :tax_percent, :tax_amount, :total_amount
+                        :batch_id, :quantity, 
+                        :rate, :rate
                     )
                 """),
                 {
@@ -332,10 +336,7 @@ async def create_sale_return(
                     "product_id": item["product_id"],
                     "batch_id": item.get("batch_id"),
                     "quantity": item["quantity"],
-                    "rate": Decimal(str(item["rate"])),
-                    "tax_percent": Decimal(str(item.get("tax_percent", 0))),
-                    "tax_amount": Decimal(str(item["quantity"])) * Decimal(str(item["rate"])) * Decimal(str(item.get("tax_percent", 0))) / 100,
-                    "total_amount": Decimal(str(item["quantity"])) * Decimal(str(item["rate"])) * (1 + Decimal(str(item.get("tax_percent", 0))) / 100)
+                    "rate": Decimal(str(item["rate"]))
                 }
             )
             
@@ -517,10 +518,10 @@ async def get_sale_return_detail(
         # Get return items
         items_query = """
             SELECT sri.*, p.product_name, p.hsn_code,
-                   si.batch_number, si.expiry_date
-            FROM sale_return_items sri
+                   b.batch_number, b.expiry_date
+            FROM return_items sri
             LEFT JOIN products p ON sri.product_id = p.product_id
-            LEFT JOIN sale_items si ON sri.original_sale_item_id = si.sale_item_id
+            LEFT JOIN batches b ON sri.batch_id = b.batch_id
             WHERE sri.return_id = :return_id
         """
         
@@ -563,7 +564,7 @@ async def cancel_sale_return(
             
         # Get return items to reverse inventory
         items = db.execute(
-            text("SELECT * FROM sale_return_items WHERE return_id = :return_id"),
+            text("SELECT * FROM return_items WHERE return_id = :return_id"),
             {"return_id": return_id}
         ).fetchall()
         
