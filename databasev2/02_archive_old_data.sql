@@ -1,0 +1,93 @@
+-- =====================================================
+-- SCRIPT 02: Archive Old Data
+-- Purpose: Move old data to archive tables
+-- Run this AFTER creating archive tables
+-- =====================================================
+
+-- Start transaction
+BEGIN;
+
+-- Archive old orders and related data
+WITH archived_orders AS (
+    INSERT INTO archive.orders 
+    SELECT * FROM orders 
+    WHERE created_at < CURRENT_DATE - INTERVAL '2 years'
+    RETURNING order_id
+)
+INSERT INTO archive.order_items
+SELECT oi.* FROM order_items oi
+INNER JOIN archived_orders ao ON oi.order_id = ao.order_id;
+
+-- Archive old invoices and related data
+WITH archived_invoices AS (
+    INSERT INTO archive.invoices 
+    SELECT * FROM invoices 
+    WHERE invoice_date < CURRENT_DATE - INTERVAL '2 years'
+    RETURNING invoice_id
+)
+INSERT INTO archive.invoice_items
+SELECT ii.* FROM invoice_items ii
+INNER JOIN archived_invoices ai ON ii.invoice_id = ai.invoice_id;
+
+-- Archive old payments
+INSERT INTO archive.invoice_payments
+SELECT * FROM invoice_payments 
+WHERE payment_date < CURRENT_DATE - INTERVAL '2 years';
+
+-- Archive old inventory movements
+INSERT INTO archive.inventory_movements
+SELECT * FROM inventory_movements 
+WHERE movement_date < CURRENT_DATE - INTERVAL '2 years';
+
+-- Delete archived data from main tables
+DELETE FROM order_items 
+WHERE order_id IN (
+    SELECT order_id FROM orders 
+    WHERE created_at < CURRENT_DATE - INTERVAL '2 years'
+);
+
+DELETE FROM orders 
+WHERE created_at < CURRENT_DATE - INTERVAL '2 years';
+
+DELETE FROM invoice_items 
+WHERE invoice_id IN (
+    SELECT invoice_id FROM invoices 
+    WHERE invoice_date < CURRENT_DATE - INTERVAL '2 years'
+);
+
+DELETE FROM invoices 
+WHERE invoice_date < CURRENT_DATE - INTERVAL '2 years';
+
+DELETE FROM invoice_payments 
+WHERE payment_date < CURRENT_DATE - INTERVAL '2 years';
+
+DELETE FROM inventory_movements 
+WHERE movement_date < CURRENT_DATE - INTERVAL '2 years';
+
+-- Log the archival
+INSERT INTO activity_log (org_id, activity_type, activity_description, created_at)
+SELECT 
+    org_id,
+    'DATA_ARCHIVAL',
+    'Archived data older than 2 years',
+    CURRENT_TIMESTAMP
+FROM organizations
+LIMIT 1;
+
+-- Verify counts
+SELECT 
+    'Archive Summary:' as message,
+    (SELECT COUNT(*) FROM archive.orders) as archived_orders,
+    (SELECT COUNT(*) FROM archive.invoices) as archived_invoices,
+    (SELECT COUNT(*) FROM archive.invoice_payments) as archived_payments,
+    (SELECT COUNT(*) FROM archive.inventory_movements) as archived_movements;
+
+COMMIT;
+
+-- Vacuum tables to reclaim space
+VACUUM ANALYZE orders;
+VACUUM ANALYZE order_items;
+VACUUM ANALYZE invoices;
+VACUUM ANALYZE invoice_items;
+VACUUM ANALYZE invoice_payments;
+VACUUM ANALYZE inventory_movements;
