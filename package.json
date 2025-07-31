@@ -1,0 +1,46 @@
+{
+  "name": "pharma-erp-backend",
+  "version": "1.0.0",
+  "description": "Enterprise Pharmaceutical ERP Backend with Complete Indian Pharma Compliance",
+  "main": "index.js",
+  "scripts": {
+    "test": "psql $DATABASE_URL -f database/enterprise-v2/10-testing/01_test_suite.sql",
+    "deploy": "psql $DATABASE_URL -f database/enterprise-v2/09-deployment/01_deploy_to_supabase.sql",
+    "migrate": "psql $DATABASE_URL -f database/enterprise-v2/09-deployment/02_migrate_from_old_structure.sql",
+    "db:reset": "psql $DATABASE_URL -c 'DROP SCHEMA IF EXISTS master, inventory, parties, sales, procurement, financial, gst, compliance, analytics, system_config CASCADE;' && npm run deploy",
+    "db:seed": "psql $DATABASE_URL -f database/enterprise-v2/07-initial-data/02_sample_products.sql",
+    "db:backup": "pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql",
+    "docs:api": "cat database/enterprise-v2/08-api/API_DOCUMENTATION.md",
+    "lint:sql": "echo 'SQL linting not configured yet'",
+    "version": "echo $npm_package_version"
+  },
+  "keywords": [
+    "pharmaceutical",
+    "erp",
+    "postgresql",
+    "supabase",
+    "gst",
+    "india",
+    "pharma",
+    "inventory",
+    "compliance",
+    "enterprise"
+  ],
+  "author": "AASO",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/pharma-erp-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YOUR_USERNAME/pharma-erp-backend/issues"
+  },
+  "homepage": "https://github.com/YOUR_USERNAME/pharma-erp-backend#readme",
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "postgresql": ">=13.0.0"
+  }
+}

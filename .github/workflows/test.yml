@@ -1,0 +1,77 @@
+name: Test Database
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pharma_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install PostgreSQL client
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+    
+    - name: Create extensions
+      env:
+        PGPASSWORD: postgres
+      run: |
+        psql -h localhost -U postgres -d pharma_test -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+        psql -h localhost -U postgres -d pharma_test -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+        
+    - name: Deploy database schema
+      env:
+        PGPASSWORD: postgres
+      run: |
+        # Run schema creation scripts in order
+        for file in database/enterprise-v2/01-schemas/*.sql; do
+          echo "Running $file"
+          psql -h localhost -U postgres -d pharma_test -f "$file"
+        done
+        
+    - name: Deploy views and functions
+      env:
+        PGPASSWORD: postgres
+      run: |
+        # Run remaining scripts
+        for dir in 02-views 03-functions 04-triggers 05-functions 06-indexes 07-initial-data 08-api; do
+          for file in database/enterprise-v2/$dir/*.sql; do
+            if [ -f "$file" ]; then
+              echo "Running $file"
+              psql -h localhost -U postgres -d pharma_test -f "$file"
+            fi
+          done
+        done
+        
+    - name: Run tests
+      env:
+        PGPASSWORD: postgres
+      run: |
+        psql -h localhost -U postgres -d pharma_test -f database/enterprise-v2/10-testing/01_test_suite.sql
+        
+    - name: Generate test report
+      env:
+        PGPASSWORD: postgres
+      run: |
+        psql -h localhost -U postgres -d pharma_test -c "SELECT testing.generate_test_report();"

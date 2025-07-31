@@ -1,0 +1,42 @@
+name: Deploy to Supabase
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Supabase CLI
+      uses: supabase/setup-cli@v1
+      with:
+        version: latest
+    
+    - name: Deploy to Supabase
+      env:
+        SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      run: |
+        # This is a placeholder - adjust based on your deployment strategy
+        echo "Deploying to Supabase project: $SUPABASE_PROJECT_ID"
+        
+        # Option 1: Using Supabase CLI (if you have migrations set up)
+        # supabase link --project-ref $SUPABASE_PROJECT_ID
+        # supabase db push
+        
+        # Option 2: Direct SQL deployment (recommended for this project)
+        # You would need to set up the database URL as a secret
+        # psql ${{ secrets.DATABASE_URL }} -f database/enterprise-v2/09-deployment/01_deploy_to_supabase.sql
+        
+    - name: Run post-deployment tests
+      if: success()
+      run: |
+        echo "Running post-deployment verification..."
+        # Add commands to verify deployment
