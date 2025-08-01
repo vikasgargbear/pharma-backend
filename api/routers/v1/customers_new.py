@@ -11,14 +11,13 @@ import logging
 
 from ...database import get_db
 from ...schemas_v2.customer import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse
-from ...core.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
 
-# Default org_id
-DEFAULT_ORG_ID = settings.default_org_id
+# Default org_id (same as in original customers.py)
+DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
 
 
 @router.post("/", response_model=CustomerResponse)
@@ -58,7 +57,7 @@ async def create_customer(
         
         # Map fields from old format to new format
         customer_data = {
-            "org_id": customer.org_id or DEFAULT_ORG_ID,
+            "org_id": getattr(customer, 'org_id', DEFAULT_ORG_ID) or DEFAULT_ORG_ID,
             "customer_code": customer_code,
             "customer_name": customer.customer_name,
             "customer_type": customer.customer_type or "retail",
