@@ -43,7 +43,7 @@ engine = create_engine(
         "keepalives_idle": 30,
         "keepalives_interval": 10,
         "keepalives_count": 5,
-        "options": "-c statement_timeout=30000"  # 30 second statement timeout
+        "options": "-c statement_timeout=30000 -c search_path=master,parties,inventory,sales,procurement,financial,gst,compliance,system_config,analytics,public"
     }
 )
 
