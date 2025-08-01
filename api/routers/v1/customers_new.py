@@ -22,30 +22,43 @@ router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
 
 def get_or_create_default_org(db: Session) -> str:
     """Get existing org or create a default one"""
-    # First try to get existing org
-    result = db.execute(text("""
-        SELECT org_id 
-        FROM master.organizations 
-        WHERE is_active = true 
-        LIMIT 1
-    """))
-    org = result.fetchone()
-    
-    if org:
-        return str(org.org_id)
-    
-    # Create default org if none exists
-    result = db.execute(text("""
-        INSERT INTO master.organizations (
-            org_code, org_name, legal_name, business_type,
-            gst_number, pan_number, is_active
-        ) VALUES (
-            'DEFAULT', 'Default Organization', 'Default Organization Ltd',
-            'pharmaceutical_distributor', '27AABCD1234E1ZX', 'AABCD1234E', true
-        ) RETURNING org_id
-    """))
-    db.commit()
-    return str(result.scalar())
+    try:
+        # First try to get existing org
+        result = db.execute(text("""
+            SELECT org_id 
+            FROM master.organizations 
+            WHERE is_active = true 
+            LIMIT 1
+        """))
+        org = result.fetchone()
+        
+        if org:
+            return str(org.org_id)
+        
+        # Create default org if none exists
+        result = db.execute(text("""
+            INSERT INTO master.organizations (
+                org_code, org_name, legal_name, business_type,
+                gst_number, pan_number, is_active,
+                registered_address, contact_numbers, email_addresses
+            ) VALUES (
+                'DEFAULT', 'Default Organization', 'Default Organization Ltd',
+                'pharmaceutical_distributor', '27AABCD1234E1ZX', 'AABCD1234E', true,
+                '{"line1": "123 Default Street", "city": "Mumbai", "state": "Maharashtra", "country": "India", "pin": "400001"}'::jsonb,
+                '{"primary": "+91-9999999999"}'::jsonb,
+                '{"primary": "info@default.com"}'::jsonb
+            ) RETURNING org_id
+        """))
+        db.commit()
+        return str(result.scalar())
+    except Exception as e:
+        # If master.organizations doesn't exist, use a fixed UUID
+        # This is temporary until the database schema is properly set up
+        logger.warning(f"Could not access master.organizations: {e}")
+        logger.warning("Using fixed org_id - ensure database schema is properly set up")
+        # Generate a stable UUID from a fixed string
+        import uuid
+        return str(uuid.uuid5(uuid.NAMESPACE_DNS, 'default.organization'))
 
 
 @router.post("/", response_model=CustomerResponse)
