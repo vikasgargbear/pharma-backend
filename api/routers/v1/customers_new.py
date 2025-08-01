@@ -136,30 +136,38 @@ async def create_customer(
         result = db.execute(query, customer_data)
         customer_id = result.scalar()
         
-        # Create address if provided
+        # Create address if provided - using master.addresses table
         if any([customer.address_line1, customer.city, customer.state]):
+            # Map state name to state code (simplified mapping)
+            state_codes = {
+                'Rajasthan': '08', 'Maharashtra': '27', 'Delhi': '07',
+                'Gujarat': '24', 'Tamil Nadu': '33', 'Karnataka': '29'
+            }
+            state_code = state_codes.get(customer.state, '00')  # Default to 00
+            
             address_query = text("""
-                INSERT INTO parties.customer_addresses (
-                    customer_id, address_type, 
-                    address_line1, address_line2, area_name,
-                    city, state, pincode, 
-                    is_primary, is_billing, is_shipping, is_active
+                INSERT INTO master.addresses (
+                    org_id, entity_type, entity_id, address_type,
+                    address_line1, address_line2, 
+                    city, state_code, state_name, country, pincode,
+                    is_default, is_active
                 ) VALUES (
-                    :customer_id, 'billing',
-                    :address_line1, :address_line2, :area_name,
-                    :city, :state, :pincode,
-                    true, true, false, true
+                    :org_id, 'customer', :customer_id, 'billing',
+                    :address_line1, :address_line2,
+                    :city, :state_code, :state_name, 'India', :pincode,
+                    true, true
                 )
             """)
             
             address_data = {
+                "org_id": org_id,
                 "customer_id": customer_id,
                 "address_line1": customer.address_line1 or '',
                 "address_line2": customer.address_line2,
-                "area_name": customer.area,  # Map area -> area_name
                 "city": customer.city or '',
-                "state": customer.state or '',
-                "pincode": customer.pincode or '000000'
+                "state_code": state_code,
+                "state_name": customer.state or '',
+                "pincode": customer.pincode or '100001'  # Valid 6-digit pincode
             }
             
             db.execute(address_query, address_data)
