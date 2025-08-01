@@ -83,12 +83,12 @@ async def create_customer(
             ) RETURNING customer_id
         """)
         
-        # Get or create default org
+        # Get or create default org - always use dynamic org_id, ignore any provided value
         org_id = get_or_create_default_org(db)
         
         # Map fields from old format to new format
         customer_data = {
-            "org_id": getattr(customer, 'org_id', org_id) or org_id,
+            "org_id": org_id,  # Always use dynamic org_id
             "customer_code": customer_code,
             "customer_name": customer.customer_name,
             "customer_type": customer.customer_type or "retail",

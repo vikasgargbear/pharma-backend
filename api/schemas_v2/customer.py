@@ -59,7 +59,7 @@ class CustomerBase(BaseModel):
 
 class CustomerCreate(CustomerBase):
     """Schema for creating a new customer"""
-    org_id: UUID = Field(..., description="Organization ID")
+    org_id: Optional[UUID] = Field(None, description="Organization ID - will be set automatically if not provided")
 
 
 class CustomerUpdate(BaseModel):
