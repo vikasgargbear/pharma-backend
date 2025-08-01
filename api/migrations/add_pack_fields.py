@@ -15,19 +15,19 @@ def run_migration():
         
         # SQL content embedded directly to avoid file path issues
         sql_content = """
--- Add pack configuration columns to inventory.products table
-ALTER TABLE inventory.products ADD COLUMN IF NOT EXISTS pack_input VARCHAR(50);
-ALTER TABLE inventory.products ADD COLUMN IF NOT EXISTS pack_quantity INTEGER;
-ALTER TABLE inventory.products ADD COLUMN IF NOT EXISTS pack_multiplier INTEGER;
-ALTER TABLE inventory.products ADD COLUMN IF NOT EXISTS pack_unit_type VARCHAR(10);
-ALTER TABLE inventory.products ADD COLUMN IF NOT EXISTS unit_count INTEGER;
-ALTER TABLE inventory.products ADD COLUMN IF NOT EXISTS unit_measurement VARCHAR(20);
-ALTER TABLE inventory.products ADD COLUMN IF NOT EXISTS packages_per_box INTEGER;
+-- Add pack configuration columns to master.products table
+ALTER TABLE master.products ADD COLUMN IF NOT EXISTS pack_input VARCHAR(50);
+ALTER TABLE master.products ADD COLUMN IF NOT EXISTS pack_quantity INTEGER;
+ALTER TABLE master.products ADD COLUMN IF NOT EXISTS pack_multiplier INTEGER;
+ALTER TABLE master.products ADD COLUMN IF NOT EXISTS pack_unit_type VARCHAR(10);
+ALTER TABLE master.products ADD COLUMN IF NOT EXISTS unit_count INTEGER;
+ALTER TABLE master.products ADD COLUMN IF NOT EXISTS unit_measurement VARCHAR(20);
+ALTER TABLE master.products ADD COLUMN IF NOT EXISTS packages_per_box INTEGER;
 
 -- Add indexes for better query performance
-CREATE INDEX IF NOT EXISTS idx_products_pack_unit_type ON inventory.products(pack_unit_type);
-CREATE INDEX IF NOT EXISTS idx_products_pack_quantity ON inventory.products(pack_quantity);
-CREATE INDEX IF NOT EXISTS idx_products_packages_per_box ON inventory.products(packages_per_box);
+CREATE INDEX IF NOT EXISTS idx_products_pack_unit_type ON master.products(pack_unit_type);
+CREATE INDEX IF NOT EXISTS idx_products_pack_quantity ON master.products(pack_quantity);
+CREATE INDEX IF NOT EXISTS idx_products_packages_per_box ON master.products(packages_per_box);
 """
         
         # Execute migration
