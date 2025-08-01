@@ -11,6 +11,7 @@ import logging
 
 from ...database import get_db
 from ...schemas_v2.customer import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse
+from ...utils.state_codes import get_state_code
 
 logger = logging.getLogger(__name__)
 
@@ -138,12 +139,8 @@ async def create_customer(
         
         # Create address if provided - using master.addresses table
         if any([customer.address_line1, customer.city, customer.state]):
-            # Map state name to state code (simplified mapping)
-            state_codes = {
-                'Rajasthan': '08', 'Maharashtra': '27', 'Delhi': '07',
-                'Gujarat': '24', 'Tamil Nadu': '33', 'Karnataka': '29'
-            }
-            state_code = state_codes.get(customer.state, '00')  # Default to 00
+            # Automatically get state code from state name
+            state_code = get_state_code(customer.state)
             
             address_query = text("""
                 INSERT INTO master.addresses (
