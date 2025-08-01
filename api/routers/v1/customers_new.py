@@ -83,16 +83,20 @@ async def create_customer(
         query = text("""
             INSERT INTO parties.customers (
                 org_id, customer_code, customer_name, customer_type,
-                primary_phone, primary_email, secondary_phone,
+                primary_phone, primary_email, secondary_phone, whatsapp_number,
                 contact_person_name, gst_number, pan_number,
                 drug_license_number, credit_limit, credit_days,
-                internal_notes, is_active
+                business_type, customer_category, customer_grade,
+                credit_rating, payment_terms, prefer_sms, prefer_email, prefer_whatsapp,
+                loyalty_tier, internal_notes, is_active
             ) VALUES (
                 :org_id, :customer_code, :customer_name, :customer_type,
-                :primary_phone, :primary_email, :secondary_phone,
+                :primary_phone, :primary_email, :secondary_phone, :whatsapp_number,
                 :contact_person_name, :gst_number, :pan_number,
                 :drug_license_number, :credit_limit, :credit_days,
-                :internal_notes, :is_active
+                :business_type, :customer_category, :customer_grade,
+                :credit_rating, :payment_terms, :prefer_sms, :prefer_email, :prefer_whatsapp,
+                :loyalty_tier, :internal_notes, :is_active
             ) RETURNING customer_id
         """)
         
@@ -108,12 +112,23 @@ async def create_customer(
             "primary_phone": customer.phone,  # Map phone -> primary_phone
             "primary_email": customer.email,
             "secondary_phone": customer.alternate_phone,  # Map alternate_phone -> secondary_phone
+            "whatsapp_number": customer.phone,  # Default to primary phone
             "contact_person_name": customer.contact_person,  # Map contact_person -> contact_person_name
             "gst_number": customer.gstin,  # Map gstin -> gst_number
             "pan_number": customer.pan_number,
             "drug_license_number": customer.drug_license_number,
             "credit_limit": customer.credit_limit or 0,
             "credit_days": customer.credit_days or 0,
+            # New fields with defaults
+            "business_type": "retail_pharmacy",
+            "customer_category": "regular", 
+            "customer_grade": "C",
+            "credit_rating": "C",
+            "payment_terms": "Cash",
+            "prefer_sms": True,
+            "prefer_email": False,
+            "prefer_whatsapp": True,
+            "loyalty_tier": "bronze",
             "internal_notes": customer.notes,  # Map notes -> internal_notes
             "is_active": customer.is_active if hasattr(customer, 'is_active') else True
         }
