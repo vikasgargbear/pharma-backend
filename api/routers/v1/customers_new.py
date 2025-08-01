@@ -16,8 +16,36 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
 
-# Default org_id (same as in original customers.py)
-DEFAULT_ORG_ID = "12de5e22-eee7-4d25-b3a7-d16d01c6170f"
+# Default org_id - will be determined dynamically
+get_or_create_default_org(db) = None
+
+
+def get_or_create_default_org(db: Session) -> str:
+    """Get existing org or create a default one"""
+    # First try to get existing org
+    result = db.execute(text("""
+        SELECT org_id 
+        FROM master.organizations 
+        WHERE is_active = true 
+        LIMIT 1
+    """))
+    org = result.fetchone()
+    
+    if org:
+        return str(org.org_id)
+    
+    # Create default org if none exists
+    result = db.execute(text("""
+        INSERT INTO master.organizations (
+            org_code, org_name, legal_name, business_type,
+            gst_number, pan_number, is_active
+        ) VALUES (
+            'DEFAULT', 'Default Organization', 'Default Organization Ltd',
+            'pharmaceutical_distributor', '27AABCD1234E1ZX', 'AABCD1234E', true
+        ) RETURNING org_id
+    """))
+    db.commit()
+    return str(result.scalar())
 
 
 @router.post("/", response_model=CustomerResponse)
@@ -55,9 +83,12 @@ async def create_customer(
             ) RETURNING customer_id
         """)
         
+        # Get or create default org
+        org_id = get_or_create_default_org(db)
+        
         # Map fields from old format to new format
         customer_data = {
-            "org_id": getattr(customer, 'org_id', DEFAULT_ORG_ID) or DEFAULT_ORG_ID,
+            "org_id": getattr(customer, 'org_id', org_id) or org_id,
             "customer_code": customer_code,
             "customer_name": customer.customer_name,
             "customer_type": customer.customer_type or "retail",
@@ -163,7 +194,7 @@ async def get_customer(
             AND c.org_id = :org_id
         """)
         
-        result = db.execute(query, {"customer_id": customer_id, "org_id": DEFAULT_ORG_ID})
+        result = db.execute(query, {"customer_id": customer_id, "org_id": get_or_create_default_org(db)})
         customer = result.fetchone()
         
         if not customer:
@@ -250,7 +281,7 @@ async def list_customers(
             WHERE c.org_id = :org_id
         """
         
-        params = {"org_id": DEFAULT_ORG_ID}
+        params = {"org_id": get_or_create_default_org(db)}
         
         # Add filters
         if search:
@@ -330,14 +361,14 @@ async def update_customer(
         exists = db.execute(text("""
             SELECT 1 FROM parties.customers 
             WHERE customer_id = :customer_id AND org_id = :org_id
-        """), {"customer_id": customer_id, "org_id": DEFAULT_ORG_ID}).scalar()
+        """), {"customer_id": customer_id, "org_id": get_or_create_default_org(db)}).scalar()
         
         if not exists:
             raise HTTPException(status_code=404, detail="Customer not found")
         
         # Build update query
         update_fields = []
-        params = {"customer_id": customer_id, "org_id": DEFAULT_ORG_ID}
+        params = {"customer_id": customer_id, "org_id": get_or_create_default_org(db)}
         
         # Map old field names to new
         field_mapping = {
@@ -446,7 +477,7 @@ async def get_customer_outstanding(
             AND c.org_id = :org_id
         """)
         
-        result = db.execute(query, {"customer_id": customer_id, "org_id": DEFAULT_ORG_ID})
+        result = db.execute(query, {"customer_id": customer_id, "org_id": get_or_create_default_org(db)})
         outstanding = result.fetchone()
         
         if not outstanding:

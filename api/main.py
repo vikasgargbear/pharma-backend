@@ -62,6 +62,7 @@ from .routers.v1.organization_settings import router as organization_settings_ro
 from .routers.v1.auth import router as auth_router
 from .routers.v1.sales_orders import router as sales_orders_router
 from .routers.v1.stock_writeoff import router as stock_writeoff_router
+from .routers.v1.organizations_debug import router as organizations_debug_router
 
 # Configure Sentry for error tracking
 # if hasattr(settings, 'SENTRY_DSN') and settings.SENTRY_DSN:
@@ -245,6 +246,7 @@ app.include_router(collection_center_router)  # 🚀 NEW: Collection center with
 # Debug router (only in debug mode)
 if settings.DEBUG:
     app.include_router(pack_debug.router)
+    app.include_router(organizations_debug_router)
 
 # Request timing middleware
 @app.middleware("http")
