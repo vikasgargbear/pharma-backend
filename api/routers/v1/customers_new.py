@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
 
 # Default org_id - will be determined dynamically
-get_or_create_default_org(db) = None
+# Removed invalid syntax that was causing crash
 
 
 def get_or_create_default_org(db: Session) -> str:
