@@ -124,9 +124,10 @@ CREATE TABLE sales.order_items (
     -- Line total
     line_total NUMERIC(15,2) NOT NULL,
     
-    -- Batch allocation (array of batches with quantities)
-    batch_allocation JSONB DEFAULT '[]',
-    -- [{"batch_id": 123, "batch_number": "B001", "quantity": 50, "expiry_date": "2025-12-31"}]
+    -- Batch allocation
+    batch_id INTEGER, -- Will add FK after inventory.batches is created
+    batch_number TEXT, -- For quick display
+    batch_expiry DATE, -- For quick validation
     
     -- Fulfillment tracking
     ordered_quantity NUMERIC(15,3),
@@ -246,7 +247,7 @@ CREATE TABLE sales.invoice_items (
     hsn_code TEXT,
     
     -- Batch information
-    batch_id INTEGER REFERENCES inventory.batches(batch_id),
+    batch_id INTEGER, -- Will add FK constraint after inventory.batches is created
     batch_number TEXT,
     manufacturing_date DATE,
     expiry_date DATE,
@@ -370,7 +371,7 @@ CREATE TABLE sales.delivery_challan_items (
     
     -- Product information
     product_id INTEGER NOT NULL REFERENCES inventory.products(product_id),
-    batch_id INTEGER REFERENCES inventory.batches(batch_id),
+    batch_id INTEGER, -- Will add FK constraint after inventory.batches is created
     
     -- Quantities
     ordered_quantity NUMERIC(15,3),
@@ -469,7 +470,7 @@ CREATE TABLE sales.sales_return_items (
     
     -- Product and batch
     product_id INTEGER NOT NULL REFERENCES inventory.products(product_id),
-    batch_id INTEGER REFERENCES inventory.batches(batch_id),
+    batch_id INTEGER, -- Will add FK constraint after inventory.batches is created
     batch_number TEXT,
     
     -- Quantities

@@ -56,14 +56,7 @@ CREATE TABLE compliance.org_licenses (
     
     -- Status tracking
     license_status TEXT DEFAULT 'active', -- 'active', 'expired', 'suspended', 'cancelled', 'under_renewal'
-    expiry_status TEXT GENERATED ALWAYS AS (
-        CASE
-            WHEN valid_until < CURRENT_DATE THEN 'expired'
-            WHEN valid_until <= CURRENT_DATE + INTERVAL '30 days' THEN 'expiring_soon'
-            WHEN valid_until <= CURRENT_DATE + INTERVAL '90 days' THEN 'renewal_due'
-            ELSE 'active'
-        END
-    ) STORED,
+    expiry_status TEXT DEFAULT 'active', -- Will be calculated via trigger/function
     
     -- Renewal tracking
     renewal_status TEXT DEFAULT 'not_due', -- 'not_due', 'due', 'in_progress', 'renewed'
@@ -298,7 +291,7 @@ CREATE TABLE compliance.quality_control_tests (
     
     -- Product and batch
     product_id INTEGER NOT NULL REFERENCES inventory.products(product_id),
-    batch_id INTEGER REFERENCES inventory.batches(batch_id),
+    batch_id INTEGER, -- Will add FK constraint after inventory.batches is created
     batch_number TEXT,
     
     -- Sample details
@@ -418,7 +411,7 @@ CREATE TABLE compliance.narcotic_register (
     
     -- Product and batch
     product_id INTEGER NOT NULL REFERENCES inventory.products(product_id),
-    batch_id INTEGER REFERENCES inventory.batches(batch_id),
+    batch_id INTEGER, -- Will add FK constraint after inventory.batches is created
     batch_number TEXT,
     
     -- Quantities (in base units)
@@ -455,18 +448,9 @@ CREATE TABLE compliance.narcotic_register (
     
     -- Audit
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_by INTEGER NOT NULL REFERENCES master.org_users(user_id),
+    created_by INTEGER NOT NULL REFERENCES master.org_users(user_id)
     
-    -- Ensure chronological order
-    CONSTRAINT narcotic_register_chronological_check CHECK (
-        transaction_date >= ALL (
-            SELECT transaction_date 
-            FROM compliance.narcotic_register nr 
-            WHERE nr.product_id = product_id 
-            AND nr.batch_id = batch_id 
-            AND nr.register_id < register_id
-        )
-    )
+    -- Chronological order will be enforced via trigger
 );
 
 -- 10. Narcotic Discrepancies
@@ -710,9 +694,127 @@ CREATE INDEX idx_environmental_compliance_date ON compliance.environmental_compl
 CREATE INDEX idx_violations_date ON compliance.compliance_violations(violation_date);
 CREATE INDEX idx_violations_status ON compliance.compliance_violations(violation_status);
 
+-- 15. Temperature Logs (Cold Chain Monitoring)
+CREATE TABLE compliance.temperature_logs (
+    log_id SERIAL PRIMARY KEY,
+    org_id UUID NOT NULL REFERENCES master.organizations(org_id) ON DELETE CASCADE,
+    branch_id INTEGER NOT NULL REFERENCES master.org_branches(branch_id),
+    
+    -- Location and device
+    location_id INTEGER NOT NULL REFERENCES inventory.storage_locations(location_id),
+    device_id TEXT NOT NULL,
+    device_type TEXT NOT NULL, -- 'sensor', 'data_logger', 'manual'
+    
+    -- Temperature data
+    temperature NUMERIC(5,2) NOT NULL,
+    humidity NUMERIC(5,2),
+    recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Compliance
+    within_range BOOLEAN NOT NULL,
+    min_allowed NUMERIC(5,2) NOT NULL,
+    max_allowed NUMERIC(5,2) NOT NULL,
+    
+    -- Excursion details
+    is_excursion BOOLEAN DEFAULT FALSE,
+    excursion_duration_minutes INTEGER,
+    excursion_severity TEXT, -- 'minor', 'major', 'critical'
+    
+    -- Action taken
+    action_required BOOLEAN DEFAULT FALSE,
+    action_taken TEXT,
+    action_by INTEGER REFERENCES master.org_users(user_id),
+    action_timestamp TIMESTAMP WITH TIME ZONE,
+    
+    -- Products affected
+    affected_products INTEGER[], -- Array of product_ids
+    affected_batches INTEGER[], -- Array of batch_ids
+    
+    -- Audit
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Indexes
+    CONSTRAINT chk_temperature_range CHECK (temperature BETWEEN -50 AND 100)
+);
+
+-- 16. Product Recalls
+CREATE TABLE compliance.product_recalls (
+    recall_id SERIAL PRIMARY KEY,
+    org_id UUID NOT NULL REFERENCES master.organizations(org_id) ON DELETE CASCADE,
+    
+    -- Recall identification
+    recall_number TEXT NOT NULL UNIQUE,
+    recall_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    recall_type TEXT NOT NULL, -- 'voluntary', 'mandatory', 'market_withdrawal'
+    recall_classification TEXT NOT NULL, -- 'class_i', 'class_ii', 'class_iii'
+    
+    -- Product and batch information
+    product_id INTEGER NOT NULL REFERENCES inventory.products(product_id),
+    affected_batches INTEGER[], -- Array of batch_ids
+    batch_numbers TEXT[], -- For documentation
+    
+    -- Recall reason
+    reason_category TEXT NOT NULL, -- 'contamination', 'labeling', 'potency', 'quality', 'safety'
+    reason_description TEXT NOT NULL,
+    health_hazard_assessment TEXT,
+    
+    -- Scope
+    distribution_pattern TEXT NOT NULL, -- 'nationwide', 'regional', 'international'
+    states_affected TEXT[],
+    countries_affected TEXT[],
+    quantity_distributed NUMERIC(15,3),
+    quantity_recovered NUMERIC(15,3),
+    
+    -- Customer notification
+    customers_notified INTEGER DEFAULT 0,
+    notification_method TEXT[], -- 'email', 'phone', 'letter', 'media'
+    notification_date DATE,
+    
+    -- Regulatory
+    fda_notified BOOLEAN DEFAULT FALSE,
+    fda_notification_date DATE,
+    regulatory_references TEXT[],
+    
+    -- Status tracking
+    recall_status TEXT DEFAULT 'initiated', -- 'initiated', 'ongoing', 'completed', 'terminated'
+    effectiveness_checks_required INTEGER DEFAULT 2,
+    effectiveness_checks_completed INTEGER DEFAULT 0,
+    
+    -- Financial impact
+    estimated_cost NUMERIC(15,2),
+    actual_cost NUMERIC(15,2),
+    insurance_claim_filed BOOLEAN DEFAULT FALSE,
+    
+    -- Completion
+    completion_date DATE,
+    final_report_submitted BOOLEAN DEFAULT FALSE,
+    lessons_learned TEXT,
+    
+    -- Audit
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER NOT NULL REFERENCES master.org_users(user_id),
+    
+    CONSTRAINT chk_recall_recovery CHECK (quantity_recovered <= quantity_distributed)
+);
+
+-- Create additional indexes for new tables
+CREATE INDEX idx_temp_logs_location_time ON compliance.temperature_logs(location_id, recorded_at);
+CREATE INDEX idx_temp_logs_excursions ON compliance.temperature_logs(is_excursion, recorded_at) WHERE is_excursion = TRUE;
+CREATE INDEX idx_temp_logs_device ON compliance.temperature_logs(device_id, recorded_at);
+CREATE INDEX idx_recalls_status ON compliance.product_recalls(recall_status, recall_date);
+CREATE INDEX idx_recalls_product ON compliance.product_recalls(product_id);
+CREATE INDEX idx_recalls_classification ON compliance.product_recalls(recall_classification);
+-- CREATE INDEX idx_inspection_findings_severity ON compliance.inspection_findings(inspection_id, severity); -- Table doesn't exist
+-- CREATE INDEX idx_temperature_logs_location ON compliance.temperature_logs(location_id, recorded_at); -- Duplicate, removed
+-- CREATE INDEX idx_audit_trail_table ON compliance.gxp_audit_trail(schema_name, table_name, timestamp); -- Table doesn't exist
+-- CREATE INDEX idx_recalls_status ON compliance.product_recalls(recall_status, recall_classification); -- Duplicate, removed
+
 -- Add comments
 COMMENT ON TABLE compliance.org_licenses IS 'Organization licenses with expiry tracking and renewal management';
 COMMENT ON TABLE compliance.regulatory_inspections IS 'Regulatory inspection records with findings and follow-up';
 COMMENT ON TABLE compliance.quality_control_tests IS 'QC test records for batches and materials';
 COMMENT ON TABLE compliance.narcotic_register IS 'Narcotic drugs register with strict balance tracking';
 COMMENT ON TABLE compliance.environmental_compliance IS 'Environmental parameter monitoring and compliance';
+COMMENT ON TABLE compliance.temperature_logs IS 'Temperature monitoring for cold chain compliance';
+COMMENT ON TABLE compliance.product_recalls IS 'Product recall management with FDA compliance';

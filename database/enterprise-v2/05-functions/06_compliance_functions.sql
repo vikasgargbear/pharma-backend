@@ -1055,11 +1055,11 @@ CREATE TABLE IF NOT EXISTS compliance.inspection_schedule (
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_licenses_expiry ON compliance.business_licenses(org_id, expiry_date);
-CREATE INDEX idx_narcotic_register_product ON compliance.narcotic_drug_register(product_id, batch_id, register_date);
-CREATE INDEX idx_inspection_findings_status ON compliance.inspection_findings(inspection_id, status, severity);
-CREATE INDEX idx_deviations_status ON compliance.quality_deviations(deviation_status, severity, deviation_date);
-CREATE INDEX idx_gxp_audit_lookup ON compliance.gxp_audit_log(table_name, record_id, action_timestamp);
+CREATE INDEX IF NOT EXISTS idx_licenses_expiry ON compliance.org_licenses(org_id, valid_until);
+CREATE INDEX IF NOT EXISTS idx_narcotic_register_product ON compliance.narcotic_register(product_id, batch_id, transaction_date);
+CREATE INDEX IF NOT EXISTS idx_inspection_status ON compliance.regulatory_inspections(inspection_status, inspection_date);
+CREATE INDEX IF NOT EXISTS idx_deviations_status ON compliance.quality_deviations(deviation_status, severity, deviation_date);
+-- GXP audit log table doesn't exist yet
 
 -- =============================================
 -- GRANTS

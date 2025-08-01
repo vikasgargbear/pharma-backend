@@ -707,14 +707,19 @@ BEGIN
             abc_category,
             COUNT(*) as product_count,
             SUM(total_value) / NULLIF(MAX(grand_total_value), 0) * 100 as value_percentage,
-            jsonb_agg(
-                jsonb_build_object(
-                    'product_id', product_id,
-                    'product_name', product_name,
-                    'total_value', ROUND(total_value, 2),
-                    'movement_count', movement_count
-                ) ORDER BY total_value DESC
-                LIMIT 10
+            (SELECT jsonb_agg(product_data)
+             FROM (
+                 SELECT jsonb_build_object(
+                     'product_id', product_id,
+                     'product_name', product_name,
+                     'total_value', ROUND(total_value, 2),
+                     'movement_count', movement_count
+                 ) as product_data
+                 FROM abc_classification ac2
+                 WHERE ac2.abc_category = abc_classification.abc_category
+                 ORDER BY total_value DESC
+                 LIMIT 10
+             ) top_products
             ) as products
         FROM abc_classification
         GROUP BY abc_category
@@ -1489,11 +1494,11 @@ $$ LANGUAGE plpgsql;
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_movements_analytics ON inventory.inventory_movements(org_id, movement_type, movement_date);
-CREATE INDEX idx_invoices_analytics ON sales.invoices(org_id, invoice_date, invoice_status);
-CREATE INDEX idx_invoice_items_batch ON sales.invoice_items USING GIN(batch_allocation);
-CREATE INDEX idx_batches_cost ON inventory.batches(product_id, cost_per_unit);
-CREATE INDEX idx_products_category ON inventory.products(category_id, org_id);
+CREATE INDEX IF NOT EXISTS idx_movements_analytics ON inventory.inventory_movements(org_id, movement_type, movement_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_analytics ON sales.invoices(org_id, invoice_date, invoice_status);
+CREATE INDEX IF NOT EXISTS idx_invoice_items_batch ON sales.invoice_items(batch_id, product_id);
+CREATE INDEX IF NOT EXISTS idx_batches_cost ON inventory.batches(product_id, cost_per_unit);
+CREATE INDEX IF NOT EXISTS idx_products_category ON inventory.products(category_id, org_id);
 
 -- =============================================
 -- GRANTS

@@ -103,8 +103,7 @@ BEGIN
         ),
         '/compliance/licenses/' || NEW.license_id
     )
-    ON CONFLICT (org_id, notification_category, notification_data->>'license_id')
-    WHERE created_at > CURRENT_DATE - INTERVAL '7 days'
+    ON CONFLICT (org_id, notification_category, (notification_data->>'license_id'))
     DO UPDATE SET
         updated_at = CURRENT_TIMESTAMP,
         escalation_level = GREATEST(
@@ -171,7 +170,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_monitor_license_expiry
-    BEFORE INSERT OR UPDATE ON compliance.licenses
+    BEFORE INSERT OR UPDATE ON compliance.org_licenses
     FOR EACH ROW
     EXECUTE FUNCTION monitor_license_expiry();
 
@@ -1181,13 +1180,13 @@ CREATE TRIGGER trigger_manage_recall
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_licenses_expiry ON compliance.licenses(valid_until, status);
-CREATE INDEX idx_narcotic_register_product ON compliance.narcotic_register(product_id, location_id, register_date);
-CREATE INDEX idx_inspection_findings_severity ON compliance.inspection_findings(inspection_id, severity);
-CREATE INDEX idx_deviations_status ON compliance.quality_deviations(status, severity);
-CREATE INDEX idx_temperature_logs_location ON compliance.temperature_logs(location_id, recorded_at);
-CREATE INDEX idx_audit_trail_table ON compliance.gxp_audit_trail(schema_name, table_name, timestamp);
-CREATE INDEX idx_recalls_status ON compliance.product_recalls(recall_status, recall_classification);
+CREATE INDEX idx_licenses_expiry ON compliance.org_licenses(valid_until, license_status);
+CREATE INDEX IF NOT EXISTS idx_narcotic_register_product ON compliance.narcotic_register(product_id, branch_id, transaction_date);
+-- CREATE INDEX idx_inspection_findings_severity ON compliance.inspection_findings(inspection_id, severity); -- Table doesn't exist
+CREATE INDEX idx_deviations_status ON compliance.quality_deviations(deviation_status, severity);
+-- CREATE INDEX idx_temperature_logs_location ON compliance.temperature_logs(location_id, recorded_at); -- Table doesn't exist
+-- CREATE INDEX idx_audit_trail_table ON compliance.gxp_audit_trail(schema_name, table_name, timestamp); -- Table doesn't exist
+-- CREATE INDEX idx_recalls_status ON compliance.product_recalls(recall_status, recall_classification); -- Table doesn't exist
 
 -- Add comments
 COMMENT ON FUNCTION monitor_license_expiry() IS 'Monitors license expiry and creates renewal tasks';

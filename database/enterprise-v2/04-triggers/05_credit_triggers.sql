@@ -720,8 +720,8 @@ CREATE TRIGGER trigger_track_collection_payment
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_customer_outstanding_customer ON financial.customer_outstanding(customer_id, status);
-CREATE INDEX idx_customer_outstanding_aging ON financial.customer_outstanding(aging_bucket, days_overdue);
+CREATE INDEX IF NOT EXISTS idx_customer_outstanding_customer ON financial.customer_outstanding(customer_id, status);
+CREATE INDEX IF NOT EXISTS idx_customer_outstanding_aging ON financial.customer_outstanding(aging_bucket, days_overdue);
 CREATE INDEX idx_customer_outstanding_followup ON financial.customer_outstanding(follow_up_date) 
     WHERE status IN ('open', 'partial');
 CREATE INDEX idx_customers_category ON parties.customers(customer_category, customer_grade);

@@ -317,26 +317,22 @@ DECLARE
     v_current_outstanding NUMERIC;
     v_available_credit NUMERIC;
 BEGIN
-    -- Get customer credit info
+    -- Get customer credit info from parties table
     SELECT 
-        (credit_info->>'credit_limit')::NUMERIC as credit_limit,
-        (credit_info->>'credit_utilized')::NUMERIC as credit_utilized
+        credit_limit,
+        current_outstanding as credit_utilized
     INTO v_credit_info
     FROM parties.customers
     WHERE customer_id = NEW.customer_id;
     
     IF v_credit_info.credit_limit IS NOT NULL AND v_credit_info.credit_limit > 0 THEN
         
-        -- On invoice posting - increase credit utilization
+        -- On invoice posting - increase outstanding
         IF TG_TABLE_NAME = 'invoices' AND NEW.invoice_status = 'posted' AND OLD.invoice_status != 'posted' THEN
-            -- Update credit utilization
+            -- Update current outstanding
             UPDATE parties.customers
             SET 
-                credit_info = credit_info || 
-                    jsonb_build_object(
-                        'credit_utilized', COALESCE(v_credit_info.credit_utilized, 0) + NEW.final_amount,
-                        'last_credit_update', CURRENT_TIMESTAMP
-                    ),
+                current_outstanding = current_outstanding + NEW.final_amount,
                 updated_at = CURRENT_TIMESTAMP
             WHERE customer_id = NEW.customer_id;
             
@@ -370,29 +366,17 @@ BEGIN
                 );
             END IF;
             
-        -- On payment receipt - reduce credit utilization
+        -- On payment receipt - handled by auto_allocate_payment trigger
         ELSIF TG_TABLE_NAME = 'payments' AND NEW.payment_status = 'cleared' AND OLD.payment_status != 'cleared' THEN
-            -- Update credit utilization
-            UPDATE parties.customers
-            SET 
-                credit_info = credit_info || 
-                    jsonb_build_object(
-                        'credit_utilized', GREATEST(0, COALESCE(v_credit_info.credit_utilized, 0) - NEW.payment_amount),
-                        'last_payment_date', NEW.payment_date,
-                        'last_payment_amount', NEW.payment_amount
-                    ),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE customer_id = NEW.party_id
-            AND NEW.party_type = 'customer';
+            -- Payment allocation is handled by the auto_allocate_payment trigger
+            NULL;
             
-        -- On credit note - reduce credit utilization
+        -- On credit note - reduce outstanding
         ELSIF TG_TABLE_NAME = 'sales_returns' AND NEW.credit_note_status = 'issued' AND OLD.credit_note_status != 'issued' THEN
+            -- Update current outstanding
             UPDATE parties.customers
             SET 
-                credit_info = credit_info || 
-                    jsonb_build_object(
-                        'credit_utilized', GREATEST(0, COALESCE(v_credit_info.credit_utilized, 0) - NEW.total_amount)
-                    ),
+                current_outstanding = GREATEST(0, current_outstanding - NEW.total_amount),
                 updated_at = CURRENT_TIMESTAMP
             WHERE customer_id = NEW.customer_id;
         END IF;
@@ -723,81 +707,38 @@ CREATE TRIGGER trigger_sync_order_invoice_status
 CREATE OR REPLACE FUNCTION auto_allocate_payment()
 RETURNS TRIGGER AS $$
 DECLARE
-    v_remaining_amount NUMERIC;
-    v_outstanding RECORD;
+    v_customer_outstanding NUMERIC;
     v_allocation_amount NUMERIC;
 BEGIN
-    -- Only for cleared customer receipts without allocations
+    -- Only for cleared customer receipts
     IF NEW.payment_status = 'cleared' AND 
        NEW.payment_type = 'receipt' AND
-       NEW.party_type = 'customer' AND
-       NEW.allocation_status = 'unallocated' THEN
+       NEW.party_type = 'customer' THEN
         
-        v_remaining_amount := NEW.payment_amount;
+        -- Get current outstanding
+        SELECT current_outstanding
+        INTO v_customer_outstanding
+        FROM parties.customers
+        WHERE customer_id = NEW.party_id;
         
-        -- Allocate to oldest outstanding first (FIFO)
-        FOR v_outstanding IN
-            SELECT 
-                outstanding_id,
-                document_type,
-                document_id,
-                document_number,
-                outstanding_amount,
-                days_overdue
-            FROM financial.customer_outstanding
-            WHERE customer_id = NEW.party_id
-            AND status IN ('open', 'partial')
-            ORDER BY due_date, document_date
-        LOOP
-            EXIT WHEN v_remaining_amount <= 0;
-            
-            v_allocation_amount := LEAST(v_remaining_amount, v_outstanding.outstanding_amount);
-            
-            -- Create allocation
-            INSERT INTO financial.payment_allocations (
-                payment_id,
-                reference_type,
-                reference_id,
-                reference_number,
-                allocated_amount,
-                allocation_status,
-                allocated_by,
-                allocated_at
-            ) VALUES (
-                NEW.payment_id,
-                v_outstanding.document_type,
-                v_outstanding.document_id,
-                v_outstanding.document_number,
-                v_allocation_amount,
-                'active',
-                NEW.created_by,
-                CURRENT_TIMESTAMP
-            );
-            
-            -- Update outstanding
-            UPDATE financial.customer_outstanding
-            SET 
-                paid_amount = paid_amount + v_allocation_amount,
-                outstanding_amount = outstanding_amount - v_allocation_amount,
-                status = CASE 
-                    WHEN outstanding_amount - v_allocation_amount <= 0 THEN 'paid'
-                    ELSE 'partial'
-                END,
-                last_payment_date = NEW.payment_date,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE outstanding_id = v_outstanding.outstanding_id;
-            
-            v_remaining_amount := v_remaining_amount - v_allocation_amount;
-        END LOOP;
+        -- Calculate how much to allocate
+        v_allocation_amount := LEAST(NEW.payment_amount, COALESCE(v_customer_outstanding, 0));
+        
+        -- Reduce current outstanding
+        UPDATE parties.customers
+        SET 
+            current_outstanding = GREATEST(0, current_outstanding - v_allocation_amount),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE customer_id = NEW.party_id;
         
         -- Update payment allocation status
         UPDATE financial.payments
         SET 
-            allocated_amount = NEW.payment_amount - v_remaining_amount,
-            unallocated_amount = v_remaining_amount,
+            allocated_amount = v_allocation_amount,
+            unallocated_amount = NEW.payment_amount - v_allocation_amount,
             allocation_status = CASE
-                WHEN v_remaining_amount = 0 THEN 'full'
-                WHEN v_remaining_amount < NEW.payment_amount THEN 'partial'
+                WHEN v_allocation_amount = NEW.payment_amount THEN 'full'
+                WHEN v_allocation_amount > 0 THEN 'partial'
                 ELSE 'unallocated'
             END,
             updated_at = CURRENT_TIMESTAMP
@@ -811,7 +752,7 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trigger_auto_allocate_payment
     AFTER UPDATE OF payment_status ON financial.payments
     FOR EACH ROW
-    WHEN (NEW.payment_status = 'cleared' AND NEW.auto_allocate = TRUE)
+    WHEN (NEW.payment_status = 'cleared')
     EXECUTE FUNCTION auto_allocate_payment();
 
 -- =============================================
@@ -925,17 +866,17 @@ $$ LANGUAGE plpgsql;
 
 -- This would typically be called by a scheduled job daily
 CREATE TRIGGER trigger_batch_expiry_check
-    AFTER INSERT ON system_config.system_health_checks
+    AFTER INSERT ON system_config.system_health_metrics
     FOR EACH ROW
     EXECUTE FUNCTION update_batch_on_expiry();
 
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_invoice_items_batch_alloc ON sales.invoice_items USING GIN(batch_allocation);
+-- CREATE INDEX idx_invoice_items_batch_alloc ON sales.invoice_items USING GIN(batch_allocation); -- Column doesn't exist
 CREATE INDEX idx_orders_fulfillment ON sales.orders(order_id, fulfillment_status);
-CREATE INDEX idx_customer_credit_util ON parties.customers((credit_info->>'credit_utilized'));
-CREATE INDEX idx_outstanding_customer_open ON financial.customer_outstanding(customer_id, status) WHERE status IN ('open', 'partial');
+-- Credit utilization tracking (current outstanding in parties table)
+CREATE INDEX idx_customer_credit_utilization ON parties.customers(customer_id, current_outstanding) WHERE current_outstanding > 0;
 CREATE INDEX idx_batches_expiry_active ON inventory.batches(expiry_date) WHERE batch_status = 'active';
 CREATE INDEX idx_reservations_expiry ON inventory.stock_reservations(expires_at, reservation_status) WHERE reservation_status = 'active';
 

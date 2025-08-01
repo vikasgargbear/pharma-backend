@@ -989,9 +989,11 @@ CREATE TABLE IF NOT EXISTS analytics.product_consumption_stats (
     weekly_consumption NUMERIC(12,3),
     monthly_consumption NUMERIC(12,3),
     trend_direction TEXT CHECK (trend_direction IN ('increasing', 'stable', 'decreasing')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_consumption_product_date (product_id, calculation_date)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Create index for consumption patterns
+CREATE INDEX IF NOT EXISTS idx_consumption_product_date ON analytics.product_consumption_stats(product_id, calculation_date);
 
 -- =============================================
 -- SUPPORTING INDEXES

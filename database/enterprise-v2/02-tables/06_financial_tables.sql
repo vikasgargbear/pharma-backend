@@ -154,20 +154,10 @@ CREATE TABLE financial.customer_outstanding (
     
     -- Due date and aging
     due_date DATE,
-    days_overdue INTEGER GENERATED ALWAYS AS 
-        (CASE WHEN due_date < CURRENT_DATE THEN (CURRENT_DATE - due_date)::INTEGER ELSE 0 END) STORED,
+    days_overdue INTEGER DEFAULT 0, -- Will be calculated via trigger/function
     
     -- Aging buckets
-    aging_bucket TEXT GENERATED ALWAYS AS (
-        CASE 
-            WHEN due_date >= CURRENT_DATE THEN 'current'
-            WHEN (CURRENT_DATE - due_date) <= 30 THEN '1-30'
-            WHEN (CURRENT_DATE - due_date) <= 60 THEN '31-60'
-            WHEN (CURRENT_DATE - due_date) <= 90 THEN '61-90'
-            WHEN (CURRENT_DATE - due_date) <= 120 THEN '91-120'
-            ELSE 'above_120'
-        END
-    ) STORED,
+    aging_bucket TEXT DEFAULT 'current', -- Will be calculated via trigger/function
     
     -- Status
     status TEXT DEFAULT 'open', -- 'open', 'partial', 'paid', 'written_off'
@@ -206,8 +196,7 @@ CREATE TABLE financial.supplier_outstanding (
     
     -- Due date
     due_date DATE,
-    days_until_due INTEGER GENERATED ALWAYS AS 
-        (CASE WHEN due_date > CURRENT_DATE THEN (due_date - CURRENT_DATE)::INTEGER ELSE 0 END) STORED,
+    days_until_due INTEGER DEFAULT 0, -- Will be calculated via trigger/function
     
     -- Status
     status TEXT DEFAULT 'open', -- 'open', 'partial', 'paid'

@@ -1033,9 +1033,10 @@ CREATE TABLE IF NOT EXISTS system_config.api_logs (
     completed_at TIMESTAMP,
     response_code INTEGER,
     error_message TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_api_logs_time (created_at, status)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Note: api_usage_log table already exists in 10_system_tables.sql, no need to create again
 
 -- Backup history
 CREATE TABLE IF NOT EXISTS system_config.backup_history (
@@ -1056,26 +1057,27 @@ CREATE TABLE IF NOT EXISTS system_config.backup_history (
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_users_active ON system_config.users(is_active, username);
-CREATE INDEX idx_user_sessions_active ON system_config.user_sessions(user_id, expires_at);
-CREATE INDEX idx_notifications_pending ON system_config.user_notifications(user_id, read_at) WHERE read_at IS NULL;
-CREATE INDEX idx_audit_log_user ON system_config.audit_log(user_id, created_at);
+-- These tables don't exist in the main schema, commented out
+-- CREATE INDEX idx_users_active ON system_config.users(is_active, username);
+-- CREATE INDEX idx_user_sessions_active ON system_config.user_sessions(user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_pending ON system_config.user_notifications(user_id, is_read) WHERE is_read = FALSE;
+CREATE INDEX IF NOT EXISTS idx_audit_log_user ON system_config.audit_logs(user_id, activity_timestamp);
 CREATE INDEX idx_settings_org ON system_config.system_settings(org_id, setting_key);
 
 -- =============================================
 -- GRANTS
 -- =============================================
-GRANT EXECUTE ON FUNCTION manage_user_access TO admin, hr_manager;
-GRANT EXECUTE ON FUNCTION manage_system_settings TO admin, system_admin;
-GRANT EXECUTE ON FUNCTION manage_notifications TO authenticated;
-GRANT EXECUTE ON FUNCTION monitor_system_health TO admin, system_monitor;
-GRANT EXECUTE ON FUNCTION manage_backup_recovery TO admin, backup_operator;
+-- GRANT EXECUTE ON FUNCTION manage_user_access TO admin, hr_manager; -- Function doesn't exist
+-- GRANT EXECUTE ON FUNCTION manage_system_settings TO admin, system_admin; -- Function doesn't exist
+-- GRANT EXECUTE ON FUNCTION manage_notifications TO authenticated; -- Function doesn't exist
+-- GRANT EXECUTE ON FUNCTION monitor_system_health TO admin, system_monitor; -- Function doesn't exist, role system_monitor doesn't exist
+-- GRANT EXECUTE ON FUNCTION manage_backup_recovery TO admin, backup_operator; -- Function doesn't exist
 
 -- =============================================
 -- COMMENTS
 -- =============================================
-COMMENT ON FUNCTION manage_user_access IS 'Comprehensive user and role management';
-COMMENT ON FUNCTION manage_system_settings IS 'System configuration management with validation';
-COMMENT ON FUNCTION manage_notifications IS 'Notification creation and delivery management';
-COMMENT ON FUNCTION monitor_system_health IS 'System health monitoring and alerting';
-COMMENT ON FUNCTION manage_backup_recovery IS 'Backup and recovery operations management';
+-- COMMENT ON FUNCTION manage_user_access IS 'Comprehensive user and role management'; -- Function doesn't exist
+-- COMMENT ON FUNCTION manage_system_settings IS 'System configuration management with validation'; -- Function doesn't exist
+-- COMMENT ON FUNCTION manage_notifications IS 'Notification creation and delivery management'; -- Function doesn't exist
+-- COMMENT ON FUNCTION monitor_system_health IS 'System health monitoring and alerting'; -- Function doesn't exist
+-- COMMENT ON FUNCTION manage_backup_recovery IS 'Backup and recovery operations management'; -- Function doesn't exist

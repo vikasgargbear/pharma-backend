@@ -17,37 +17,31 @@ CREATE TABLE parties.customers (
     customer_type TEXT NOT NULL, -- 'pharmacy', 'hospital', 'clinic', 'institution', 'doctor'
     
     -- Contact information (primary)
-    contact_info JSONB NOT NULL DEFAULT '{}',
-    -- {
-    --   "primary_phone": "9876543210",
-    --   "primary_email": "contact@pharmacy.com",
-    --   "alternate_phones": ["9876543211"],
-    --   "contact_person": "Mr. Sharma",
-    --   "contact_person_phone": "9876543212"
-    -- }
+    primary_phone TEXT NOT NULL,
+    primary_email TEXT,
+    secondary_phone TEXT,
+    whatsapp_number TEXT,
+    contact_person_name TEXT,
+    contact_person_phone TEXT,
+    contact_person_email TEXT,
     
     -- Business information
-    business_info JSONB DEFAULT '{}',
-    -- {
-    --   "gst_number": "27AABCU9603R1ZM",
-    --   "pan_number": "AABCU9603R",
-    --   "drug_license_number": "DL-123456",
-    --   "drug_license_validity": "2025-12-31",
-    --   "fssai_number": "12345678901234",
-    --   "establishment_year": 2010,
-    --   "business_type": "retail_pharmacy"
-    -- }
+    gst_number TEXT,
+    pan_number TEXT,
+    drug_license_number TEXT,
+    drug_license_validity DATE,
+    fssai_number TEXT,
+    establishment_year INTEGER,
+    business_type TEXT DEFAULT 'retail_pharmacy',
     
     -- Credit and payment terms
-    credit_info JSONB DEFAULT '{}',
-    -- {
-    --   "credit_limit": 500000,
-    --   "credit_days": 30,
-    --   "credit_rating": "A",
-    --   "payment_terms": "Net 30",
-    --   "security_deposit": 50000,
-    --   "overdue_interest_rate": 18
-    -- }
+    credit_limit NUMERIC(15,2) DEFAULT 0,
+    current_outstanding NUMERIC(15,2) DEFAULT 0,
+    credit_days INTEGER DEFAULT 0,
+    credit_rating TEXT DEFAULT 'C', -- 'A', 'B', 'C', 'D'
+    payment_terms TEXT DEFAULT 'Cash',
+    security_deposit NUMERIC(15,2) DEFAULT 0,
+    overdue_interest_rate NUMERIC(5,2) DEFAULT 0,
     
     -- Classification
     customer_category TEXT, -- 'vip', 'regular', 'new', 'blacklisted'
@@ -71,7 +65,9 @@ CREATE TABLE parties.customers (
     -- Preferences
     preferred_payment_mode TEXT,
     preferred_delivery_time TEXT,
-    communication_preferences JSONB DEFAULT '{}',
+    prefer_sms BOOLEAN DEFAULT true,
+    prefer_email BOOLEAN DEFAULT false,
+    prefer_whatsapp BOOLEAN DEFAULT true,
     
     -- Business metrics
     first_transaction_date DATE,
@@ -100,8 +96,8 @@ CREATE TABLE parties.customers (
     
     UNIQUE(org_id, customer_code),
     CONSTRAINT valid_customer_gst CHECK (
-        business_info->>'gst_number' IS NULL OR 
-        (business_info->>'gst_number')::TEXT ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+        gst_number IS NULL OR 
+        gst_number ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
     )
 );
 
@@ -116,20 +112,24 @@ CREATE TABLE parties.suppliers (
     supplier_type TEXT NOT NULL, -- 'manufacturer', 'distributor', 'stockist', 'importer', 'trader'
     
     -- Contact information
-    contact_info JSONB NOT NULL DEFAULT '{}',
+    primary_phone TEXT NOT NULL,
+    primary_email TEXT,
+    secondary_phone TEXT,
+    contact_person_name TEXT,
+    contact_person_phone TEXT,
     
     -- Business information
-    business_info JSONB DEFAULT '{}',
-    -- Similar structure as customers
+    gst_number TEXT,
+    pan_number TEXT,
+    drug_license_number TEXT,
+    drug_license_validity DATE,
+    establishment_year INTEGER,
     
     -- Payment terms
-    payment_terms JSONB DEFAULT '{}',
-    -- {
-    --   "payment_days": 45,
-    --   "payment_mode": "bank_transfer",
-    --   "early_payment_discount": 2,
-    --   "late_payment_penalty": 18
-    -- }
+    payment_days INTEGER DEFAULT 30,
+    preferred_payment_mode TEXT DEFAULT 'bank_transfer',
+    early_payment_discount NUMERIC(5,2) DEFAULT 0,
+    late_payment_penalty NUMERIC(5,2) DEFAULT 0,
     
     -- Classification
     supplier_category TEXT, -- 'preferred', 'regular', 'backup', 'blacklisted'
@@ -152,14 +152,11 @@ CREATE TABLE parties.suppliers (
     -- ]
     
     -- Banking details (for payments)
-    bank_details JSONB DEFAULT '{}',
-    -- {
-    --   "account_name": "ABC Pharma Pvt Ltd",
-    --   "account_number": "1234567890",
-    --   "bank_name": "HDFC Bank",
-    --   "branch": "Mumbai Main",
-    --   "ifsc_code": "HDFC0001234"
-    -- }
+    bank_name TEXT,
+    account_number TEXT,
+    ifsc_code TEXT,
+    account_type TEXT DEFAULT 'current',
+    account_holder_name TEXT,
     
     -- Credit terms from supplier
     credit_limit_given NUMERIC(15,2),
@@ -421,7 +418,7 @@ CREATE TABLE parties.routes (
 CREATE INDEX idx_customers_org ON parties.customers(org_id);
 CREATE INDEX idx_customers_type ON parties.customers(customer_type);
 CREATE INDEX idx_customers_active ON parties.customers(is_active) WHERE is_active = true;
-CREATE INDEX idx_customers_gst ON parties.customers((business_info->>'gst_number'));
+CREATE INDEX idx_customers_gst ON parties.customers(gst_number);
 CREATE INDEX idx_suppliers_org ON parties.suppliers(org_id);
 CREATE INDEX idx_suppliers_category ON parties.suppliers(supplier_category);
 CREATE INDEX idx_territories_org ON parties.territories(org_id);

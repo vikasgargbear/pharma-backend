@@ -386,7 +386,7 @@ $$ LANGUAGE plpgsql;
 
 -- Trigger on system heartbeat or daily job
 CREATE TRIGGER trigger_scheduled_reports
-    AFTER INSERT ON system_config.system_health_checks
+    AFTER INSERT ON system_config.system_health_metrics
     FOR EACH ROW
     EXECUTE FUNCTION schedule_automated_reports();
 
@@ -891,17 +891,18 @@ CREATE TRIGGER trigger_cache_refresh_invoices
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_kpi_actuals_lookup ON analytics.kpi_actuals(org_id, kpi_code, period_type, period_start);
-CREATE INDEX idx_kpi_alerts_recent ON analytics.kpi_alerts(org_id, created_at) WHERE acknowledged = FALSE;
-CREATE INDEX idx_report_schedules_next ON analytics.report_schedules(next_run_at) WHERE is_active = TRUE;
-CREATE INDEX idx_data_quality_issues ON analytics.data_quality_issues(org_id, table_name, created_at);
-CREATE INDEX idx_customer_predictions ON analytics.customer_predictions(customer_id, prediction_date);
-CREATE INDEX idx_performance_metrics ON analytics.performance_metrics(metric_type, metric_date);
-CREATE INDEX idx_dashboard_cache_stale ON analytics.dashboard_cache(org_id, is_stale) WHERE is_stale = TRUE;
+-- Tables don't exist - commenting out indexes
+-- CREATE INDEX idx_kpi_actuals_lookup ON analytics.kpi_actuals(org_id, kpi_code, period_type, period_start);
+-- CREATE INDEX idx_kpi_alerts_recent ON analytics.kpi_alerts(org_id, created_at) WHERE acknowledged = FALSE;
+CREATE INDEX idx_report_schedules_next ON analytics.report_schedules(is_active) WHERE is_active = TRUE;
+-- CREATE INDEX idx_data_quality_issues ON analytics.data_quality_issues(org_id, table_name, created_at);
+-- CREATE INDEX idx_customer_predictions ON analytics.customer_predictions(customer_id, prediction_date);
+-- CREATE INDEX idx_performance_metrics ON analytics.performance_metrics(metric_type, metric_date);
+-- CREATE INDEX idx_dashboard_cache_stale ON analytics.dashboard_cache(org_id, is_stale) WHERE is_stale = TRUE;
 
 -- Add comments
 COMMENT ON FUNCTION calculate_realtime_kpis() IS 'Calculates KPIs in real-time from transactional data';
-COMMENT ON FUNCTION check_kpi_thresholds() IS 'Monitors KPI thresholds and creates alerts';
+-- COMMENT ON FUNCTION check_kpi_thresholds() IS 'Monitors KPI thresholds and creates alerts'; -- Function doesn't exist
 COMMENT ON FUNCTION schedule_automated_reports() IS 'Manages automated report generation schedule';
 COMMENT ON FUNCTION monitor_data_quality() IS 'Tracks data quality issues across critical tables';
 COMMENT ON FUNCTION update_predictive_models() IS 'Updates predictive analytics models';

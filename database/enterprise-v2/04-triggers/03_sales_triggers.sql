@@ -796,13 +796,11 @@ CREATE TRIGGER trigger_process_sales_return
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_order_items_order ON sales.order_items(order_id);
-CREATE INDEX idx_order_items_product ON sales.order_items(product_id);
-CREATE INDEX idx_price_list_items_product ON sales.price_list_items(product_id, price_list_id);
-CREATE INDEX idx_schemes_validity ON sales.sales_schemes(start_date, end_date) WHERE is_active = TRUE;
-CREATE INDEX idx_invoices_order ON sales.invoices(order_id);
-CREATE INDEX idx_sales_targets_entity ON sales.sales_targets(target_type, target_entity_id);
-CREATE INDEX idx_returns_invoice ON sales.sales_returns(invoice_id);
+-- Note: Most indexes are created in 02-tables files or 06-indexes/01_performance_indexes.sql
+-- Only create trigger-specific indexes here
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON sales.order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_order ON sales.invoices(order_id);
+CREATE INDEX IF NOT EXISTS idx_sales_targets_entity ON sales.sales_targets(target_type, target_entity_id);
 
 -- Add comments
 COMMENT ON FUNCTION calculate_order_totals() IS 'Calculates order totals from line items';

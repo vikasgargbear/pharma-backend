@@ -1086,7 +1086,7 @@ CREATE TABLE IF NOT EXISTS gst.advance_receipts (
 -- SUPPORTING INDEXES
 -- =============================================
 CREATE INDEX idx_invoices_gst_period ON sales.invoices(org_id, invoice_date, invoice_status);
-CREATE INDEX idx_supplier_invoices_gst ON procurement.supplier_invoices(org_id, invoice_date, invoice_status);
+CREATE INDEX IF NOT EXISTS idx_supplier_invoices_gst ON procurement.supplier_invoices(org_id, invoice_date);
 CREATE INDEX idx_return_filing_status ON gst.return_filing_status(org_id, return_type, due_date);
 CREATE INDEX idx_purchase_reconciliation ON gst.purchase_reconciliation(org_id, match_status, invoice_date);
 

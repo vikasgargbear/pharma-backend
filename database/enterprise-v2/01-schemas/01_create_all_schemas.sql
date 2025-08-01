@@ -5,6 +5,10 @@
 -- Each schema represents a bounded context
 -- =============================================
 
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 -- 1. Master Data Management
 CREATE SCHEMA IF NOT EXISTS master;
 COMMENT ON SCHEMA master IS 'Core master data: organizations, users, locations, configuration';
@@ -45,6 +49,14 @@ COMMENT ON SCHEMA analytics IS 'Business intelligence, KPIs, and reporting';
 CREATE SCHEMA IF NOT EXISTS system_config;
 COMMENT ON SCHEMA system_config IS 'System settings, integrations, and monitoring';
 
+-- 11. Testing Schema
+CREATE SCHEMA IF NOT EXISTS testing;
+COMMENT ON SCHEMA testing IS 'Testing framework and test utilities';
+
+-- 12. API Schema
+CREATE SCHEMA IF NOT EXISTS api;
+COMMENT ON SCHEMA api IS 'REST-style API functions for external access';
+
 -- Grant basic permissions
 GRANT USAGE ON SCHEMA master TO authenticated;
 GRANT USAGE ON SCHEMA inventory TO authenticated;
@@ -56,6 +68,8 @@ GRANT USAGE ON SCHEMA gst TO authenticated;
 GRANT USAGE ON SCHEMA compliance TO authenticated;
 GRANT USAGE ON SCHEMA analytics TO authenticated;
 GRANT USAGE ON SCHEMA system_config TO authenticated;
+GRANT USAGE ON SCHEMA testing TO authenticated;
+GRANT USAGE ON SCHEMA api TO authenticated;
 
 -- Verify schema creation
 SELECT 

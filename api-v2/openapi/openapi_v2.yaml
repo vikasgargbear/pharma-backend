@@ -1,0 +1,424 @@
+openapi: 3.0.3
+info:
+  title: AASO Pharma ERP API v2
+  description: |
+    Enterprise-grade pharmaceutical ERP API with comprehensive features:
+    
+    ## 🎯 Key Features
+    - **Multi-tenant Architecture**: Organization-based data isolation
+    - **10 Specialized Schemas**: Direct mapping to database schemas
+    - **Type-Safe**: Full TypeScript/Pydantic support
+    - **GST Compliant**: E-invoicing, E-way bills, Returns
+    - **Real-time Analytics**: Dashboards and KPIs
+    - **Audit Trail**: Complete activity tracking
+    
+    ## 📋 Field Mapping (v1 → v2)
+    - `outstanding_balance` → `current_outstanding`
+    - `gstin` → `gst_number`
+    - `contact_info.*` → Flattened fields
+    - `address_info.*` → Flattened fields
+    
+  version: 2.0.0
+  contact:
+    name: AASO Support
+    email: support@aasopharma.com
+  license:
+    name: Proprietary
+    
+servers:
+  - url: /api/v2
+    description: API v2 Base URL
+  - url: https://api.aasopharma.com/v2
+    description: Production API
+    
+tags:
+  - name: Authentication
+    description: JWT-based authentication with organization context
+  - name: Master Data
+    description: Units, categories, taxes, document series
+  - name: Parties
+    description: Customer and supplier management
+  - name: Inventory
+    description: Products, batches, stock management
+  - name: Sales
+    description: Orders, invoices, delivery, returns
+  - name: Procurement
+    description: Purchase orders, goods receipt
+  - name: Financial
+    description: Payments, ledgers, outstanding
+  - name: GST
+    description: Tax compliance, e-invoicing, returns
+  - name: Analytics
+    description: Dashboards, reports, KPIs
+    
+paths:
+  # Authentication
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, org_code]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                org_code:
+                  type: string
+                  description: Organization code for multi-tenant access
+      responses:
+        200:
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+                
+  # Parties - Customers
+  /parties/customers:
+    get:
+      tags: [Parties]
+      summary: List customers
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name, code, phone, GST
+        - name: customer_type
+          in: query
+          schema:
+            type: string
+            enum: [pharmacy, hospital, clinic, distributor, other]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, blocked]
+        - name: has_outstanding
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/SortOrderParam'
+      responses:
+        200:
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerListResponse'
+    post:
+      tags: [Parties]
+      summary: Create customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+      responses:
+        201:
+          description: Customer created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+                
+  /parties/customers/{customer_id}:
+    get:
+      tags: [Parties]
+      summary: Get customer details
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Customer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+                
+  /parties/customers/{customer_id}/credit-check:
+    get:
+      tags: [Parties]
+      summary: Check customer credit
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: order_amount
+          in: query
+          required: true
+          schema:
+            type: number
+            format: float
+      responses:
+        200:
+          description: Credit check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditCheckResponse'
+                
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    SortByParam:
+      name: sort_by
+      in: query
+      schema:
+        type: string
+    SortOrderParam:
+      name: sort_order
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+        
+  schemas:
+    # Standard Response Format
+    StandardResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Error'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+          
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        field:
+          type: string
+        message:
+          type: string
+          
+    ResponseMeta:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+        pagination:
+          $ref: '#/components/schemas/PaginationMeta'
+          
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_items:
+          type: integer
+        total_pages:
+          type: integer
+          
+    # Authentication
+    LoginResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                refresh_token:
+                  type: string
+                token_type:
+                  type: string
+                expires_in:
+                  type: integer
+                user:
+                  $ref: '#/components/schemas/UserInfo'
+                  
+    UserInfo:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        username:
+          type: string
+        full_name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        org_id:
+          type: string
+          format: uuid
+        org_name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+            
+    # Customer Schemas
+    CustomerBase:
+      type: object
+      required:
+        - customer_code
+        - customer_name
+        - customer_type
+        - primary_phone
+        - billing_address
+        - billing_city
+        - billing_state
+        - billing_pincode
+      properties:
+        customer_code:
+          type: string
+        customer_name:
+          type: string
+        customer_type:
+          type: string
+          enum: [pharmacy, hospital, clinic, distributor, other]
+        primary_phone:
+          type: string
+          pattern: '^[0-9]{10,15}$'
+        alternate_phone:
+          type: string
+        email:
+          type: string
+          format: email
+        billing_address:
+          type: string
+        billing_city:
+          type: string
+        billing_state:
+          type: string
+        billing_pincode:
+          type: string
+        gst_number:
+          type: string
+          pattern: '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+        credit_limit:
+          type: number
+          minimum: 0
+        current_outstanding:
+          type: number
+        credit_days:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [active, inactive, blocked]
+          
+    CustomerCreate:
+      allOf:
+        - $ref: '#/components/schemas/CustomerBase'
+        
+    CustomerResponse:
+      allOf:
+        - $ref: '#/components/schemas/CustomerBase'
+        - type: object
+          properties:
+            customer_id:
+              type: integer
+            org_id:
+              type: string
+              format: uuid
+            available_credit:
+              type: number
+            total_business:
+              type: number
+            last_transaction_date:
+              type: string
+              format: date-time
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+              
+    CustomerListResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/CustomerResponse'
+                
+    CreditCheckResponse:
+      allOf:
+        - $ref: '#/components/schemas/StandardResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                customer_id:
+                  type: integer
+                credit_limit:
+                  type: number
+                current_outstanding:
+                  type: number
+                available_credit:
+                  type: number
+                order_amount:
+                  type: number
+                after_order_outstanding:
+                  type: number
+                credit_status:
+                  type: string
+                  enum: [ok, warning, blocked]
+                can_proceed:
+                  type: boolean
+                message:
+                  type: string
+                  
+security:
+  - BearerAuth: []

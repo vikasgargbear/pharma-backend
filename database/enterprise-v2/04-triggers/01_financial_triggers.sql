@@ -587,7 +587,7 @@ CREATE TRIGGER trigger_auto_bank_reconciliation
 CREATE INDEX idx_journal_entries_status ON financial.journal_entries(entry_status);
 CREATE INDEX idx_payment_allocations_payment ON financial.payment_allocations(payment_id);
 CREATE INDEX idx_customer_outstanding_overdue ON financial.customer_outstanding(customer_id, days_overdue);
-CREATE INDEX idx_pdc_cheque_date ON financial.pdc_management(cheque_date) WHERE pdc_status = 'pending';
+CREATE INDEX idx_pdc_cheque_date_pending ON financial.pdc_management(cheque_date) WHERE pdc_status = 'pending';
 CREATE INDEX idx_cash_flow_forecast_date ON financial.cash_flow_forecast(org_id, forecast_date);
 
 -- Add comments

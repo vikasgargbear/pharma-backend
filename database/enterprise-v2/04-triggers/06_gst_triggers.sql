@@ -38,7 +38,7 @@ BEGIN
         h.cess_percentage,
         h.description
     INTO v_hsn_details
-    FROM gst.hsn_codes h
+    FROM gst.hsn_sac_codes h
     WHERE h.hsn_code = NEW.hsn_code
     AND h.is_active = TRUE;
     
@@ -116,7 +116,7 @@ BEGIN
     v_return_period := TO_CHAR(NEW.invoice_date, 'MMYYYY');
     
     -- Get or create GSTR-1 header
-    INSERT INTO gst.gstr_1_header (
+    INSERT INTO gst.gstr1_data (
         org_id,
         branch_id,
         return_period,
@@ -166,7 +166,7 @@ BEGIN
     
     -- Insert B2B invoices
     IF v_invoice_type = 'b2b' THEN
-        INSERT INTO gst.gstr_1_b2b (
+        INSERT INTO gst.gstr1_data (
             gstr1_header_id,
             invoice_id,
             invoice_number,
@@ -210,7 +210,7 @@ BEGIN
             SELECT * FROM sales.invoice_items
             WHERE invoice_id = NEW.invoice_id
         LOOP
-            INSERT INTO gst.gstr_1_b2b_items (
+            INSERT INTO gst.gstr1_data_items (
                 b2b_id,
                 hsn_code,
                 description,
@@ -235,7 +235,7 @@ BEGIN
                 v_item.cgst_amount,
                 v_item.sgst_amount,
                 v_item.cess_amount
-            FROM gst.gstr_1_b2b b
+            FROM gst.gstr1_data b
             WHERE b.invoice_id = NEW.invoice_id;
         END LOOP;
         
@@ -294,7 +294,7 @@ BEGIN
     END IF;
     
     -- Update header totals
-    UPDATE gst.gstr_1_header
+    UPDATE gst.gstr1_data
     SET 
         total_taxable_value = total_taxable_value + NEW.taxable_amount,
         total_igst = total_igst + NEW.igst_amount,
@@ -443,7 +443,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_reconcile_gstr2a
-    BEFORE INSERT OR UPDATE ON gst.gstr_2a_data
+    BEFORE INSERT OR UPDATE ON gst.gstr2a_data
     FOR EACH ROW
     EXECUTE FUNCTION reconcile_gstr2a_with_purchases();
 
@@ -608,9 +608,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_generate_eway_bill
-    AFTER UPDATE OF dispatch_status ON sales.dispatch_details
+    AFTER UPDATE OF challan_status ON sales.delivery_challans
     FOR EACH ROW
-    WHEN (NEW.dispatch_status = 'dispatched')
+    WHEN (NEW.challan_status = 'dispatched')
     EXECUTE FUNCTION generate_eway_bill_on_dispatch();
 
 -- =============================================
@@ -704,9 +704,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_track_gst_rate_changes
-    AFTER UPDATE OF gst_percentage ON gst.hsn_codes
+    AFTER UPDATE OF igst_rate, cgst_rate, sgst_rate ON gst.hsn_sac_codes
     FOR EACH ROW
-    WHEN (NEW.gst_percentage != OLD.gst_percentage)
+    WHEN (NEW.igst_rate != OLD.igst_rate OR NEW.cgst_rate != OLD.cgst_rate OR NEW.sgst_rate != OLD.sgst_rate)
     EXECUTE FUNCTION track_gst_rate_changes();
 
 -- =============================================
@@ -748,7 +748,7 @@ BEGIN
     AND invoice_status = 'approved';
     
     -- Update GSTR-3B summary
-    UPDATE gst.gstr_3b_header
+    UPDATE gst.gstr3b_data
     SET 
         -- 3.1 Outward supplies
         outward_taxable_supplies = v_outward_supplies.interstate_taxable + 
@@ -783,9 +783,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_compute_gstr3b
-    AFTER UPDATE OF return_status ON gst.gstr_3b_header
+    AFTER UPDATE OF filing_status ON gst.gstr3b_data
     FOR EACH ROW
-    WHEN (NEW.return_status = 'computing')
+    WHEN (NEW.filing_status = 'computing')
     EXECUTE FUNCTION compute_gstr3b_summary();
 
 -- =============================================
@@ -863,7 +863,7 @@ BEGIN
         NEW.net_payment_amount := NEW.payment_amount - NEW.tds_amount;
         
         -- Create TDS entry
-        INSERT INTO gst.tds_entries (
+        INSERT INTO gst.gst_liability (
             org_id,
             payment_id,
             party_type,
@@ -909,7 +909,7 @@ CREATE OR REPLACE FUNCTION maintain_gst_audit_trail()
 RETURNS TRIGGER AS $$
 BEGIN
     -- Log all changes to GST-related tables
-    INSERT INTO gst.audit_trail (
+    INSERT INTO gst.gst_audit_trail (
         org_id,
         table_name,
         operation_type,
@@ -941,24 +941,24 @@ $$ LANGUAGE plpgsql;
 
 -- Apply to critical GST tables
 CREATE TRIGGER trigger_audit_gstr1
-    AFTER INSERT OR UPDATE OR DELETE ON gst.gstr_1_header
+    AFTER INSERT OR UPDATE OR DELETE ON gst.gstr1_data
     FOR EACH ROW
     EXECUTE FUNCTION maintain_gst_audit_trail();
 
 CREATE TRIGGER trigger_audit_gstr3b
-    AFTER INSERT OR UPDATE OR DELETE ON gst.gstr_3b_header
+    AFTER INSERT OR UPDATE OR DELETE ON gst.gstr3b_data
     FOR EACH ROW
     EXECUTE FUNCTION maintain_gst_audit_trail();
 
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_hsn_codes_active ON gst.hsn_codes(hsn_code) WHERE is_active = TRUE;
-CREATE INDEX idx_gstr1_b2b_invoice ON gst.gstr_1_b2b(invoice_id);
-CREATE INDEX idx_gstr2a_reconciliation ON gst.gstr_2a_data(reconciliation_status);
-CREATE INDEX idx_eway_bills_reference ON gst.eway_bills(reference_type, reference_id);
-CREATE INDEX idx_tds_entries_party ON gst.tds_entries(party_type, party_id);
-CREATE INDEX idx_audit_trail_table ON gst.audit_trail(table_name, change_timestamp);
+CREATE INDEX IF NOT EXISTS idx_hsn_codes_active ON gst.hsn_sac_codes(code) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_gstr1_period ON gst.gstr1_data(return_period, org_id);
+CREATE INDEX IF NOT EXISTS idx_gstr2a_reconciliation ON gst.gstr2a_data(reconciliation_status);
+CREATE INDEX IF NOT EXISTS idx_eway_bills_reference ON gst.eway_bills(document_type, document_id);
+CREATE INDEX IF NOT EXISTS idx_gst_liability_period ON gst.gst_liability(tax_period, org_id);
+CREATE INDEX IF NOT EXISTS idx_gst_audit_trail_activity ON gst.gst_audit_trail(activity_date, activity_type);
 
 -- Add comments
 COMMENT ON FUNCTION calculate_gst_on_invoice_item() IS 'Calculates GST based on interstate/intrastate rules';

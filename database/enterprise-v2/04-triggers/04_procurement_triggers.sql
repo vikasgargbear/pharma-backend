@@ -656,9 +656,9 @@ CREATE TRIGGER trigger_process_purchase_return
 -- =============================================
 CREATE INDEX idx_po_items_po ON procurement.purchase_order_items(purchase_order_id);
 CREATE INDEX idx_grn_items_grn ON procurement.grn_items(grn_id);
-CREATE INDEX idx_grn_items_product ON procurement.grn_items(product_id);
-CREATE INDEX idx_supplier_invoices_grn ON procurement.supplier_invoices(grn_ids) USING GIN;
-CREATE INDEX idx_vendor_performance_supplier ON procurement.vendor_performance(supplier_id, period_start);
+CREATE INDEX IF NOT EXISTS idx_grn_items_product ON procurement.grn_items(product_id);
+CREATE INDEX idx_supplier_invoices_grn ON procurement.supplier_invoices USING GIN(grn_ids);
+CREATE INDEX IF NOT EXISTS idx_vendor_performance_supplier ON procurement.vendor_performance(supplier_id, period_start);
 CREATE INDEX idx_requisitions_status ON procurement.purchase_requisitions(requisition_status);
 CREATE INDEX idx_requisitions_approver ON procurement.purchase_requisitions(current_approver_id);
 

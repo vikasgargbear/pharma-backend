@@ -58,7 +58,7 @@ CREATE TABLE system_config.system_settings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_by INTEGER REFERENCES master.org_users(user_id),
     
-    UNIQUE(COALESCE(org_id, '00000000-0000-0000-0000-000000000000'::UUID), setting_category, setting_key, setting_scope)
+    UNIQUE(org_id, setting_category, setting_key, setting_scope)
 );
 
 -- 2. Audit Logs
@@ -499,7 +499,7 @@ CREATE TABLE system_config.feature_flags (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_by INTEGER REFERENCES master.org_users(user_id),
     
-    UNIQUE(COALESCE(org_id, '00000000-0000-0000-0000-000000000000'::UUID), flag_key)
+    UNIQUE(org_id, flag_key)
 );
 
 -- 13. Error Logs
@@ -556,9 +556,147 @@ CREATE INDEX idx_scheduled_jobs_next_run ON system_config.scheduled_jobs(next_ru
 CREATE INDEX idx_email_templates_code ON system_config.email_templates(template_code);
 CREATE INDEX idx_feature_flags_key ON system_config.feature_flags(flag_key);
 
+-- 14. Workflow Definitions
+CREATE TABLE system_config.workflow_definitions (
+    workflow_id SERIAL PRIMARY KEY,
+    org_id UUID NOT NULL REFERENCES master.organizations(org_id) ON DELETE CASCADE,
+    
+    -- Workflow details
+    workflow_code TEXT NOT NULL,
+    workflow_name TEXT NOT NULL,
+    workflow_type TEXT NOT NULL, -- 'purchase_order', 'sales_return', 'credit_note', 'payment'
+    
+    -- Configuration
+    steps JSONB NOT NULL DEFAULT '[]',
+    /* Example:
+    [
+        {
+            "step": 1,
+            "name": "Manager Approval",
+            "approver_role": "sales_manager",
+            "conditions": {"amount": {"operator": ">=", "value": 50000}},
+            "sla_hours": 24,
+            "can_skip": false
+        }
+    ]
+    */
+    
+    -- Rules
+    conditions JSONB DEFAULT '{}',
+    escalation_rules JSONB DEFAULT '{}',
+    
+    -- Status
+    is_active BOOLEAN DEFAULT TRUE,
+    
+    -- Audit
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    
+    UNIQUE(org_id, workflow_code)
+);
+
+-- 15. Workflow Instances
+CREATE TABLE system_config.workflow_instances (
+    instance_id SERIAL PRIMARY KEY,
+    workflow_id INTEGER NOT NULL REFERENCES system_config.workflow_definitions(workflow_id),
+    org_id UUID NOT NULL REFERENCES master.organizations(org_id) ON DELETE CASCADE,
+    
+    -- Instance details
+    instance_code TEXT NOT NULL,
+    reference_type TEXT NOT NULL, -- 'purchase_order', 'sales_return', etc
+    reference_id INTEGER NOT NULL,
+    
+    -- Current state
+    current_step INTEGER NOT NULL DEFAULT 1,
+    instance_status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'rejected', 'cancelled'
+    
+    -- Approval tracking
+    approval_history JSONB DEFAULT '[]',
+    /* Example:
+    [
+        {
+            "step": 1,
+            "approver_id": 123,
+            "action": "approved",
+            "comments": "OK",
+            "timestamp": "2024-01-15T10:30:00Z"
+        }
+    ]
+    */
+    
+    -- Timing
+    initiated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    sla_deadline TIMESTAMP WITH TIME ZONE,
+    
+    -- Escalation
+    is_escalated BOOLEAN DEFAULT FALSE,
+    escalation_level INTEGER DEFAULT 0,
+    
+    -- Audit
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER NOT NULL REFERENCES master.org_users(user_id),
+    
+    UNIQUE(org_id, instance_code)
+);
+
+-- 16. API Usage Log
+CREATE TABLE system_config.api_usage_log (
+    log_id BIGSERIAL,
+    org_id UUID REFERENCES master.organizations(org_id) ON DELETE CASCADE,
+    
+    -- Request details
+    endpoint TEXT NOT NULL,
+    method TEXT NOT NULL,
+    user_id INTEGER REFERENCES master.org_users(user_id),
+    ip_address INET,
+    user_agent TEXT,
+    
+    -- Performance
+    request_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    response_time_ms INTEGER,
+    status_code INTEGER,
+    
+    -- Size
+    request_size_bytes INTEGER,
+    response_size_bytes INTEGER,
+    
+    -- Error tracking
+    error_occurred BOOLEAN DEFAULT FALSE,
+    error_message TEXT,
+    
+    -- Rate limiting
+    rate_limit_remaining INTEGER,
+    
+    -- Partition by month for performance
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Composite primary key including partition key
+    PRIMARY KEY (log_id, created_at)
+) PARTITION BY RANGE (created_at);
+
+-- Create monthly partitions (example for 2024)
+CREATE TABLE system_config.api_usage_log_2024_01 PARTITION OF system_config.api_usage_log
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+CREATE TABLE system_config.api_usage_log_2024_02 PARTITION OF system_config.api_usage_log
+    FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');
+-- Add more partitions as needed
+
+-- Create indexes for new tables
+CREATE INDEX idx_workflow_instances_status ON system_config.workflow_instances(instance_status, org_id);
+CREATE INDEX idx_workflow_instances_reference ON system_config.workflow_instances(reference_type, reference_id);
+CREATE INDEX idx_workflow_instances_sla ON system_config.workflow_instances(sla_deadline) WHERE instance_status = 'pending';
+CREATE INDEX idx_api_log_timestamp ON system_config.api_usage_log(request_timestamp);
+CREATE INDEX idx_api_log_endpoint ON system_config.api_usage_log(endpoint, method);
+CREATE INDEX idx_api_log_user ON system_config.api_usage_log(user_id, request_timestamp);
+
 -- Add comments
 COMMENT ON TABLE system_config.system_settings IS 'Configurable system settings at various scopes';
 COMMENT ON TABLE system_config.audit_logs IS 'Comprehensive audit trail for all system activities';
 COMMENT ON TABLE system_config.system_notifications IS 'System-wide notifications and alerts';
 COMMENT ON TABLE system_config.scheduled_jobs IS 'Background job scheduling and management';
 COMMENT ON TABLE system_config.feature_flags IS 'Feature toggle and A/B testing configuration';
+COMMENT ON TABLE system_config.workflow_definitions IS 'Workflow templates for approval processes';
+COMMENT ON TABLE system_config.workflow_instances IS 'Active workflow instances for approvals';
+COMMENT ON TABLE system_config.api_usage_log IS 'API usage tracking for performance and security';

@@ -772,10 +772,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_monitor_competitor_price
-    BEFORE INSERT OR UPDATE ON inventory.competitor_pricing
-    FOR EACH ROW
-    EXECUTE FUNCTION monitor_competitor_pricing();
+-- DISABLED: Table inventory.competitor_pricing doesn't exist
+-- CREATE TRIGGER trigger_monitor_competitor_price
+--     BEFORE INSERT OR UPDATE ON inventory.competitor_pricing
+--     FOR EACH ROW
+--     EXECUTE FUNCTION monitor_competitor_pricing();
 
 -- =============================================
 -- SUPPORTING TABLES
@@ -819,10 +820,12 @@ CREATE TABLE IF NOT EXISTS inventory.price_history (
     change_reason TEXT,
     changed_by INTEGER,
     changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source_reference TEXT,
-    INDEX idx_price_history_product (product_id, changed_at),
-    INDEX idx_price_history_batch (batch_id, price_type)
+    source_reference TEXT
 );
+
+-- Create indexes for price history
+CREATE INDEX idx_price_history_product ON inventory.price_history(product_id, changed_at);
+CREATE INDEX idx_price_history_batch ON inventory.price_history(batch_id, price_type);
 
 -- Price change log
 CREATE TABLE IF NOT EXISTS inventory.price_change_log (

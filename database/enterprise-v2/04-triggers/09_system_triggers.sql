@@ -54,7 +54,7 @@ BEGIN
     END CASE;
     
     -- Log configuration change
-    INSERT INTO system_config.configuration_history (
+    INSERT INTO system_config.audit_logs (
         org_id,
         setting_key,
         old_value,
@@ -548,7 +548,7 @@ BEGIN
     
     -- Create alert if needed
     IF v_create_alert THEN
-        INSERT INTO system_config.system_alerts (
+        INSERT INTO system_config.system_notifications (
             org_id,
             alert_type,
             severity,
@@ -577,10 +577,10 @@ BEGIN
         ON CONFLICT (org_id, alert_type, source) 
         WHERE resolved_at IS NULL
         DO UPDATE SET
-            occurrences = system_config.system_alerts.occurrences + 1,
+            occurrences = system_config.system_notifications.occurrences + 1,
             last_occurred_at = CURRENT_TIMESTAMP,
             severity = GREATEST(
-                system_config.system_alerts.severity::TEXT,
+                system_config.system_notifications.severity::TEXT,
                 v_alert_severity
             )::TEXT;
         
@@ -628,7 +628,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_monitor_health
-    BEFORE INSERT ON system_config.system_health_checks
+    BEFORE INSERT ON system_config.system_health_metrics
     FOR EACH ROW
     EXECUTE FUNCTION monitor_system_health();
 
@@ -679,7 +679,7 @@ BEGIN
         COUNT(*) FILTER (WHERE request_timestamp > CURRENT_TIMESTAMP - INTERVAL '1 hour') as last_hour,
         COUNT(*) FILTER (WHERE request_timestamp > CURRENT_TIMESTAMP - INTERVAL '1 day') as last_day
     INTO v_current_usage
-    FROM system_config.api_usage_log
+    FROM system_config.integration_logs
     WHERE org_id = NEW.org_id
     AND (user_id = NEW.user_id OR ip_address = NEW.ip_address)
     AND status_code < 429; -- Don't count rate limited requests
@@ -774,7 +774,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_rate_limiting
-    BEFORE INSERT ON system_config.api_usage_log
+    BEFORE INSERT ON system_config.integration_logs
     FOR EACH ROW
     EXECUTE FUNCTION enforce_api_rate_limits();
 
@@ -817,7 +817,7 @@ BEGIN
     -- Check storage limits
     SELECT SUM(backup_size_mb) / 1024.0
     INTO v_storage_used
-    FROM system_config.backup_history
+    FROM system_config.job_execution_history
     WHERE org_id = NEW.org_id
     AND status = 'completed'
     AND deleted_at IS NULL;
@@ -829,7 +829,7 @@ BEGIN
         -- Find oldest non-critical backup
         SELECT *
         INTO v_oldest_backup
-        FROM system_config.backup_history
+        FROM system_config.job_execution_history
         WHERE org_id = NEW.org_id
         AND status = 'completed'
         AND deleted_at IS NULL
@@ -844,7 +844,7 @@ BEGIN
         END IF;
         
         -- Mark for deletion
-        UPDATE system_config.backup_history
+        UPDATE system_config.job_execution_history
         SET 
             deleted_at = CURRENT_TIMESTAMP,
             deletion_reason = 'Storage limit exceeded'
@@ -939,7 +939,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_manage_backups
-    BEFORE UPDATE ON system_config.backup_history
+    BEFORE UPDATE ON system_config.job_execution_history
     FOR EACH ROW
     EXECUTE FUNCTION manage_backup_lifecycle();
 
@@ -972,7 +972,7 @@ BEGIN
         -- Check concurrent sessions
         SELECT COUNT(*)
         INTO v_active_sessions
-        FROM system_config.user_sessions
+        FROM system_config.audit_logs
         WHERE user_id = NEW.user_id
         AND is_active = TRUE
         AND last_activity > CURRENT_TIMESTAMP - (v_session_timeout || ' minutes')::INTERVAL;
@@ -981,14 +981,14 @@ BEGIN
             -- Find oldest session to terminate
             SELECT *
             INTO v_oldest_session
-            FROM system_config.user_sessions
+            FROM system_config.audit_logs
             WHERE user_id = NEW.user_id
             AND is_active = TRUE
             ORDER BY last_activity
             LIMIT 1;
             
             -- Terminate oldest session
-            UPDATE system_config.user_sessions
+            UPDATE system_config.audit_logs
             SET 
                 is_active = FALSE,
                 logout_time = CURRENT_TIMESTAMP,
@@ -1017,7 +1017,7 @@ BEGIN
         
         -- Check for suspicious activity
         IF EXISTS (
-            SELECT 1 FROM system_config.user_sessions
+            SELECT 1 FROM system_config.audit_logs
             WHERE user_id = NEW.user_id
             AND login_time > CURRENT_TIMESTAMP - INTERVAL '1 minute'
             GROUP BY user_id
@@ -1065,20 +1065,20 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_manage_sessions
-    BEFORE INSERT OR UPDATE ON system_config.user_sessions
+    BEFORE INSERT OR UPDATE ON system_config.audit_logs
     FOR EACH ROW
     EXECUTE FUNCTION manage_user_sessions();
 
 -- =============================================
 -- SUPPORTING INDEXES
 -- =============================================
-CREATE INDEX idx_config_history_key ON system_config.configuration_history(org_id, setting_key, change_timestamp);
-CREATE INDEX idx_notifications_pending ON system_config.system_notifications(org_id, acknowledged) WHERE acknowledged = FALSE;
-CREATE INDEX idx_workflow_instances_pending ON system_config.workflow_instances(assigned_to, step_status) WHERE step_status = 'pending';
-CREATE INDEX idx_system_alerts_active ON system_config.system_alerts(org_id, resolved_at) WHERE resolved_at IS NULL;
-CREATE INDEX idx_api_usage_recent ON system_config.api_usage_log(org_id, user_id, request_timestamp);
-CREATE INDEX idx_backup_history_active ON system_config.backup_history(org_id, status, deleted_at) WHERE deleted_at IS NULL;
-CREATE INDEX idx_user_sessions_active ON system_config.user_sessions(user_id, is_active) WHERE is_active = TRUE;
+CREATE INDEX idx_config_history_key ON system_config.audit_logs(org_id, entity_type, activity_timestamp);
+CREATE INDEX idx_notifications_pending ON system_config.system_notifications(org_id, is_active) WHERE is_active = TRUE;
+CREATE INDEX idx_workflow_instances_pending ON system_config.workflow_instances(org_id, instance_status) WHERE instance_status = 'pending';
+CREATE INDEX idx_system_alerts_active ON system_config.system_notifications(org_id, valid_until);
+CREATE INDEX idx_api_usage_recent ON system_config.integration_logs(integration_id, request_timestamp);
+CREATE INDEX idx_backup_history_active ON system_config.job_execution_history(job_id, execution_status) WHERE execution_status = 'running';
+CREATE INDEX idx_user_sessions_active ON system_config.audit_logs(user_id, activity_type) WHERE activity_type IN ('login', 'logout');
 
 -- Add comments
 COMMENT ON FUNCTION track_configuration_changes() IS 'Tracks system configuration changes and manages impacts';

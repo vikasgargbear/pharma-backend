@@ -723,7 +723,7 @@ CREATE INDEX idx_location_stock_product ON inventory.location_wise_stock(product
 CREATE INDEX idx_stock_reservations_product ON inventory.stock_reservations(product_id, reservation_status);
 CREATE INDEX idx_batch_expiry ON inventory.batches(expiry_date) WHERE batch_status = 'active';
 CREATE INDEX idx_movements_product_date ON inventory.inventory_movements(product_id, movement_date);
-CREATE INDEX idx_reorder_suggestions_urgency ON inventory.reorder_suggestions(urgency) WHERE suggestion_status = 'pending';
+-- Index for reorder_suggestions moved to table creation script
 
 -- Add comments
 COMMENT ON FUNCTION sync_location_stock_with_batch() IS 'Synchronizes location-wise stock with batch totals';

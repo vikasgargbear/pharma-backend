@@ -411,7 +411,7 @@ CREATE TABLE procurement.purchase_return_items (
     
     -- Product and batch
     product_id INTEGER NOT NULL REFERENCES inventory.products(product_id),
-    batch_id INTEGER REFERENCES inventory.batches(batch_id),
+    batch_id INTEGER, -- Will add FK constraint after inventory.batches is created
     batch_number TEXT NOT NULL,
     
     -- Quantities

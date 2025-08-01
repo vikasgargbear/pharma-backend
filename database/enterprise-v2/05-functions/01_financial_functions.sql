@@ -759,7 +759,7 @@ BEGIN
             cess_percentage,
             is_exempt
         INTO v_hsn_tax
-        FROM gst.hsn_codes
+        FROM gst.hsn_sac_codes
         WHERE hsn_code = v_item->>'hsn_code'
         AND is_active = TRUE;
         

@@ -890,10 +890,10 @@ $$ LANGUAGE plpgsql;
 -- =============================================
 -- INDEXES FOR FUNCTIONS
 -- =============================================
-CREATE INDEX idx_movements_product_date ON inventory.inventory_movements(product_id, movement_date);
-CREATE INDEX idx_location_stock_available ON inventory.location_wise_stock(product_id, location_id) 
-    WHERE stock_status = 'available';
-CREATE INDEX idx_batches_expiry_active ON inventory.batches(expiry_date, batch_status) 
+CREATE INDEX IF NOT EXISTS idx_movements_product_date ON inventory.inventory_movements(product_id, movement_date);
+CREATE INDEX IF NOT EXISTS idx_location_stock_available ON inventory.location_wise_stock(product_id, location_id) 
+    WHERE quantity_available > 0;
+CREATE INDEX IF NOT EXISTS idx_batches_expiry_active ON inventory.batches(expiry_date, batch_status) 
     WHERE batch_status = 'active';
 
 -- =============================================

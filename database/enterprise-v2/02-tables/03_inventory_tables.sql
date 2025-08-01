@@ -132,7 +132,8 @@ CREATE TABLE inventory.products (
     base_uom_id INTEGER REFERENCES inventory.units_of_measure(uom_id),
     
     -- Tax configuration
-    tax_config JSONB DEFAULT '{}', -- {"gst_rate": 12, "cess_rate": 0}
+    gst_percentage NUMERIC(5,2) DEFAULT 0,
+    cess_percentage NUMERIC(5,2) DEFAULT 0,
     
     -- Storage requirements
     storage_conditions TEXT, -- 'Cool and dry', 'Below 25°C', 'Refrigerate'
@@ -211,7 +212,7 @@ CREATE TABLE inventory.product_pack_configurations (
     -- Audit
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
-    CONSTRAINT one_default_per_product UNIQUE (product_id, is_default) WHERE is_default = true
+    CONSTRAINT one_default_per_product UNIQUE (product_id, is_default)
 );
 
 -- 6. Batches (Lot tracking)
@@ -246,7 +247,15 @@ CREATE TABLE inventory.batches (
     trade_price_per_unit NUMERIC(15,2),
     
     -- Pricing for different pack levels
-    pack_pricing JSONB DEFAULT '{}', -- {"strip": {"mrp": 100, "ptr": 80}, "box": {...}}
+    strip_mrp NUMERIC(15,2),
+    strip_ptr NUMERIC(15,2),
+    strip_pts NUMERIC(15,2),
+    box_mrp NUMERIC(15,2),
+    box_ptr NUMERIC(15,2),
+    box_pts NUMERIC(15,2),
+    case_mrp NUMERIC(15,2),
+    case_ptr NUMERIC(15,2),
+    case_pts NUMERIC(15,2),
     
     -- Quality and compliance
     qc_status TEXT DEFAULT 'pending', -- 'pending', 'passed', 'failed', 'quarantine'
@@ -578,7 +587,7 @@ CREATE TABLE inventory.reorder_suggestions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
-    UNIQUE(product_id) WHERE suggestion_status = 'pending'
+    UNIQUE(product_id, suggestion_status)
 );
 
 -- Create indexes for performance
@@ -594,6 +603,8 @@ CREATE INDEX idx_movements_date ON inventory.inventory_movements(movement_date);
 CREATE INDEX idx_movements_reference ON inventory.inventory_movements(reference_type, reference_id);
 CREATE INDEX idx_reservations_active ON inventory.stock_reservations(product_id, location_id) 
     WHERE reservation_status = 'active';
+CREATE INDEX idx_reorder_suggestions_urgency ON inventory.reorder_suggestions(urgency) 
+    WHERE suggestion_status = 'pending';
 
 -- Add comments
 COMMENT ON TABLE inventory.products IS 'Master product catalog with Indian pharma specific fields';
