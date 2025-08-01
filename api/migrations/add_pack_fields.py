@@ -10,6 +10,11 @@ from ..core.database_manager import get_database_manager
 
 def run_migration():
     """Run the pack fields migration"""
+    # DISABLED: Products are in inventory.products, not master.products
+    # This migration is no longer needed with the new schema
+    print("⚠️  Skipping add_pack_fields migration - using new schema")
+    return True
+    
     try:
         db_manager = get_database_manager()
         

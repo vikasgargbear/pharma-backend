@@ -18,6 +18,11 @@ def run_all_migrations():
     migrations_run = []
     migrations_failed = []
     
+    # DISABLED: Using new enterprise database schema from production-infra
+    print("⚠️  Migrations disabled - using new enterprise database schema")
+    print("   All schema changes should be made in production-infra/database")
+    return
+    
     print("🔄 Starting database migrations...")
     print(f"Time: {datetime.utcnow().isoformat()}")
     print("-" * 50)
