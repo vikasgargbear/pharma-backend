@@ -32,7 +32,7 @@ async def create_customer(
     try:
         # Generate customer code
         result = db.execute(text("""
-            SELECT 'CUST' || LPAD(COALESCE(MAX(SUBSTRING(customer_code FROM '[0-9]+$')::INTEGER), 0) + 1::TEXT, 5, '0')
+            SELECT 'CUST' || LPAD((COALESCE(MAX(SUBSTRING(customer_code FROM '[0-9]+$')::INTEGER), 0) + 1)::TEXT, 5, '0')
             FROM parties.customers
             WHERE customer_code LIKE 'CUST%'
         """))
