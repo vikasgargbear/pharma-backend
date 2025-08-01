@@ -153,6 +153,8 @@ class DatabaseManager:
         
         try:
             session = self.SessionLocal()
+            # Set search path for multi-schema architecture
+            session.execute(text("SET search_path TO master, parties, inventory, sales, procurement, financial, gst, compliance, system_config, analytics, public"))
             # Test the session
             session.execute(text("SELECT 1"))
             self.circuit_breaker.record_success()
@@ -219,6 +221,7 @@ def get_db():
     
     try:
         session = db_manager.get_session()
+        # Search path is already set in get_session()
         yield session
     except SQLAlchemyError as e:
         logger.error(f"Database session error: {e}")
